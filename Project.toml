@@ -3,6 +3,11 @@ uuid = "17931224-7cbf-4caf-b3a8-b20a7f1b766b"
 authors = ["Ethan Anderes <anderes@ucdavis.edu> and contributors"]
 version = "0.1.0"
 
+[deps]
+FFTransforms = "41ee4b3b-6d90-492a-9c4b-6a995b15ca9c"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+XFields = "6b266097-e72c-4055-8154-82a0a0b3a8e0"
+
 [compat]
 julia = "1.3"
 
