@@ -5,7 +5,6 @@ using FFTransforms
 using LinearAlgebra
 using LoopVectorization
 
-
 #####################################
 #
 # AbstractFlow 
@@ -24,7 +23,7 @@ end
 # flow(L,f) where f Map Field
 function flow(L::AbstractFlow{Trn,Tf,Ti,d}, f::MF)  where {Tf,Ti,d, Trn<:Transform{Tf,d}, MF<:MapField{Trn,Tf,Ti,d}} 
 	tr = fieldtransform(f)
-    MF(tr, flow(L, f[:]))
+	MF(tr, flow(L, f[:]))
 end
 
 # L * f where f Fourier Field
@@ -45,7 +44,7 @@ Base.:\(L::AbstractFlow, f) = flow(inv(L),f)
 # ODE solvers 
 include("ode_solvers.jl")
 
-# Xlense type
+# Xlense
 export Xlense, AdjointXlense
 include("Xlense/xlense.jl")
 include("Xlense/adjoint_xlense.jl")
