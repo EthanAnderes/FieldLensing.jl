@@ -15,6 +15,7 @@ struct Xlense{Trn<:Transform,Tf,Ti,d}  <: AbstractFlow{Trn,Tf,Ti,d}
     nsteps::Int
 end
 
+
 function Xlense(trn::Trn, v::NTuple{d,Xmap{Trn,Tf,Ti,d}}, t₀, t₁, nsteps) where {Tf,Ti,d,Trn<:Transform{Tf,d}}
     Xlense{Trn,Tf,Ti,d}(trn, v, t₀, t₁, nsteps)
 end
@@ -39,24 +40,21 @@ function flowRK38(L::Xlense{Trn}, f::Array{Tf,d}) where {Tf,d,Trn<:Transform}
 	odesolve_RK38(Lp!, f, L.t₀, L.t₁, L.nsteps)
 end
 
-#TODO: What about Adjoints ...?
 
 ######################################
 #
 # XlensePlan and AbstractXlensePlan
 #
-# Low level struct with all the variables
-# for fast computation of the Xlense vector field
 ######################################
+# XlensePlan is a Low level struct with 
+# pre-computed variables for fast 
+# computation of the Xlense vector field
+
 
 abstract type AbstractXlensePlan{Trn<:Transform,Tf,Ti,d} end
-# • This abstract type to allow me to circumvent the fall back method 
-# of gradient! ...
-# • Perhaps also gives me the flexibility to impliment
+# This abstract type to allows to circumvent the fall back method 
+# of gradient! 
 
-
-# Low level holder of all the objects necessary to numerically calculate Xlense operation
-# Also if pL isa XlensePlan then pL(v, t, y) -> overwrites the vector field onto v
 struct XlensePlan{Trn<:Transform,Tf,Ti,d} <: AbstractXlensePlan{Trn,Tf,Ti,d}
     trn::Trn
     k::  NTuple{d,Array{Tf,d}}    
@@ -86,7 +84,6 @@ end
 
 # Gradients with XlensePlan
 # The default fallback method here is to use fft for gradients.
-# However you can circumvent it by defining a more specific dispatch
 function gradient!(∇y::NTuple{d,Array{Tf,d}}, y::Array{Tf,d}, Lp::AbstractXlensePlan{Trn}) where {Tf,d,Trn<:Transform{Tf,d}}
 	
 	FFT = plan(Lp.trn)
@@ -98,8 +95,7 @@ function gradient!(∇y::NTuple{d,Array{Tf,d}}, y::Array{Tf,d}, Lp::AbstractXlen
 
 end
 
-# vector field method (d==1)
-# Note: overwrites v
+# Vector field method (d==1). Note: overwrites v
 function (Lp::XlensePlan{Trn})(v::Array{Tf,1}, t::Real, y::Array{Tf,1}) where {Tf,Trn<:Transform{Tf,1}}
 
 		@avx @. Lp.mx[1,1]  = 1 / (1 + t * Lp.∂vx[1,1])
@@ -107,12 +103,11 @@ function (Lp::XlensePlan{Trn})(v::Array{Tf,1}, t::Real, y::Array{Tf,1}) where {T
 
 		gradient!(Lp.∇y, y, Lp) 
 
-		@avx @. v =  px[1] * Lp.∇y[1]
+		@avx @. v =  px[1] * Lp.∇y[1] # pxⁱ⋅ ∇ⁱ ⋅ yx
 
 end
 
-# vector field method (d==2)
-# Note: overwrites v
+# Vector field method (d==2). Note: overwrites v
 function (Lp::XlensePlan{Trn})(v::Array{Tf,2}, t::Real, y::Array{Tf,2}) where {Tf,Trn<:Transform{Tf,2}}
 		
 		m11,  m12,  m21,  m22  = Lp.mx[1,1],  Lp.mx[1,2],  Lp.mx[2,1],  Lp.mx[2,2]
@@ -135,6 +130,6 @@ function (Lp::XlensePlan{Trn})(v::Array{Tf,2}, t::Real, y::Array{Tf,2}) where {T
 
 		gradient!(Lp.∇y, y, Lp) 
 
-		@avx @. v =  p1 * Lp.∇y[1] + p2 * Lp.∇y[2]
+		@avx @. v =  p1 * Lp.∇y[1] + p2 * Lp.∇y[2] # pxⁱ⋅ ∇ⁱ ⋅ yx
 
 end

@@ -46,8 +46,9 @@ Base.:\(L::AbstractFlow, f) = flow(inv(L),f)
 include("ode_solvers.jl")
 
 # Xlense type
-export Xlense
+export Xlense, AdjointXlense
 include("Xlense/xlense.jl")
+include("Xlense/adjoint_xlense.jl")
 
 
 end

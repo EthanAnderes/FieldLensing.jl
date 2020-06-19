@@ -100,19 +100,19 @@ fig.tight_layout()
     (ik1, ik2)
 end
 
-vϕ = (∇[1] * ϕ, ∇[2] * ϕ)
-t₀ = 0
-t₁ = 1
-nsteps = 16 
-L = FieldLensing.Xlense(trn, vϕ, t₀, t₁, nsteps)
-
+L, Lʰ = let trn=trn, nsteps=16, ϕ=ϕ
+    vϕ = (∇[1] * ϕ, ∇[2] * ϕ)
+    t₀ = 0
+    t₁ = 1
+    nsteps = 16 
+    L  = FieldLensing.Xlense(trn, vϕ, t₀, t₁, nsteps)
+    L, L' 
+end
 
 lenT1 = L * T
 lenT2 = Xmap(trn, FieldLensing.flowRK38(L,T[:]))
-
 T1 = L \ lenT1
 T2 = Xmap(trn, FieldLensing.flowRK38(inv(L),lenT2[:]))
-
 #=
 T[:] |> matshow
 lenT1[:] |> matshow
@@ -121,11 +121,32 @@ lenT2[:] |> matshow
 (T - lenT2)[:] |> matshow; colorbar()
 (T - T1)[:] |> matshow; colorbar()
 (T - T2)[:] |> matshow; colorbar()
+=#
 
 
-using BenchmarkTools 
+lenʰT1 = Lʰ * T
+lenʰT2 = Xmap(trn, FieldLensing.flowRK38(Lʰ,T[:]))
+ʰT1 = Lʰ \ lenʰT1
+ʰT2 = Xmap(trn, FieldLensing.flowRK38(inv(Lʰ),lenʰT2[:]))
+#=
+T[:] |> matshow
+lenʰT1[:] |> matshow
+lenʰT2[:] |> matshow
+(T - lenʰT1)[:] |> matshow; colorbar()
+(T - lenʰT2)[:] |> matshow; colorbar()
+(T - ʰT1)[:] |> matshow; colorbar()
+(T - ʰT2)[:] |> matshow; colorbar()
+=#
+
+
+
+#=
+using BenchmarkTools
+
 @benchmark $L * $T
-@benchmark FieldLensing.flowRK4($L,$(T[:]))
-@benchmark FieldLensing.flowRK38($L,$(T[:]))
-# 25.386 ms, nside 256, Float32, 16 Rk4 steps, 5 threads, MKL
+# 25.242 ms, nside 256, Float32, 16 Rk4 steps, 5 threads, MKL
+
+@benchmark $Lʰ * $T
+# 26.930 ms, nside 256, Float32, 16 Rk4 steps, 5 threads, MKL
+
 =#
