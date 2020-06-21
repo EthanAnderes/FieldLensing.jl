@@ -42,7 +42,7 @@ end
 
 # flow(L,f) where f is a Fourier Field
 function flow(L::AbstractFlow{Trn,Tf,Ti,d}, f::FourierField{Trn,Tf,Ti,d})  where {Tf, Ti, d, Trn<:Transform{Tf,d}} 
-	FourierFlow(flow(L,MapField(f)))
+	FourierField(flow(L,MapField(f)))
 end
 
 # ODE solvers used by flow 

@@ -26,6 +26,7 @@ Literate.markdown(          #src
     config=config,          #src
 )                           #src
 
+
 using FieldLensing
 using XFields
 using HealpixTransforms
@@ -40,33 +41,37 @@ using LBblocks
 
 # Hook into FieldLensing with Harmonic transforms
 # ---------------------------------------
-
-# Darn ... this is going to be a problem since ∂vx
-# Perhaps it is best to make ℍ0{Tf} be a dimension 2 operator ...
-
-
-function plan(L::Xlense{Trn,Tf,Ti,1}) where {Tf,Ti,d,Trn<:ℍ0{Tf}}
+F64 = Float64
+C64 = Complex{F64}
+# for ℍ0 we have Xlense{2,...,1} since it's a 2 dimensional field, stored in 1-d Array
+function FieldLensing.plan(L::Xlense{2,ℍ0,F64,C64,1})
     szf, szi =  size_in(L.trn), size_out(L.trn)
-    k   = lm(L.trn)
-    vx  = tuple((L.v[i][:] for i=1:d)...)
+    k     = lm(L.trn)
+    vx    = tuple(L.v[1][:], L.v[1][:])
     
-    ∂vx = Array{Tf,d}[(DiagOp(Xfourier(L.trn,im*k[c]))*L.v[r])[:] for r=1:d, c=1:d]
-    
+    ∇v1x = HealpixTransforms.∇(L.v[1][!], L.trn)[1:2]
+    ∇v2x = HealpixTransforms.∇(L.v[2][!], L.trn)[1:2]
+    sinθ = sin.(pix(L.trn)[1])
+    ∂vx = Array{F64,1}[Array{F64,1}(undef,szf) for r=1:2, c=1:2]
+    ∂vx[1,1] .= ∇v1x[1]
+    ∂vx[2,1] .= ∇v2x[1]
+    ∂vx[1,2] .= sinθ.*∇v1x[2] 
+    ∂vx[2,2] .= sinθ.*∇v2x[2] 
+
     mx  = deepcopy(∂vx)
     px  = deepcopy(vx)
     ∇y  = deepcopy(vx)
-    sk  = zeros(Ti,szi)
-    yk  = zeros(Ti,szi)
-    XlensePlan{Trn,Tf,Ti,d}(L.trn,k,vx,∂vx,mx,px,∇y,sk,yk)
+    sk  = zeros(C64,szi)
+    yk  = zeros(C64,szi)
+    FieldLensing.XlensePlan{2,ℍ0,F64,C64,1}(L.trn,k,vx,∂vx,mx,px,∇y,sk,yk)
 end
 
-function gradient!(∇y::NTuple{d,Array{Tf,1}}, y::Array{Tf,1}, Lp::XlensePlan{Trn}) where {Tf,d,Trn<:ℍ0{Tf}}
-    FFT = FFTransforms.plan(Lp.trn)
-    mul!(Lp.yk, FFT.unscaled_forward_transform, y)
-    for i = 1:d
-        @inbounds @. Lp.sk = Lp.yk * Lp.k[i] * im * FFT.scale_forward * FFT.scale_inverse
-        mul!(∇y[i], FFT.unscaled_inverse_transform, Lp.sk)
-    end
+function FieldLensing.gradient!(∇y::NTuple{2,Array{F64,1}}, y::Array{F64,1}, Lp::FieldLensing.XlensePlan{2,ℍ0,F64,C64,1})
+    f = Xmap(Lp.trn, y)
+    ∇θf, sinθ⁻¹∇φf = HealpixTransforms.∇(f[!], Lp.trn)[1:2]
+    ∇y[1] .= ∇θf
+    sinθ = sin.(pix(L.trn)[1])
+    ∇y[2] .= sinθ .* sinθ⁻¹∇φf
 end
 
 
@@ -131,21 +136,16 @@ T, ϕ = @sblock let trn, CT, Cϕ
     T  = √CT * Xfourier(trn, zTlm)
     ϕ  = √Cϕ * Xfourier(trn, zϕlm)
 
-	Xmap(T), Xmap(ϕ)
+	T, ϕ
 end
 
 #=
-fig,ax = subplots(1,2,figsize=(10,4))
 
-y, x = pix(trn) # y indexes rows, x indexes cols 
-pcm1 = ax[1].pcolormesh(x,y,T[:])
-pcm2 = ax[2].pcolormesh(x,y,ϕ[:])
-fig.colorbar(pcm1, ax = ax[1])
-fig.colorbar(pcm2, ax = ax[2])
-ax[1].set_title(L"T(x)")
-ax[2].set_title(L"\phi(x)")
+eqT,  = HealpixTransforms.get_eq_belt(T[:])
+eqϕ,  = HealpixTransforms.get_eq_belt(ϕ[:])
+eqT |> matshow; colorbar()
+eqϕ |> matshow; colorbar()
 
-fig.tight_layout()
 savefig(joinpath(@__DIR__,"plot1.png")) #src
 close() #src
 #md # ![plot1](plot1.png)
@@ -153,34 +153,42 @@ close() #src
 
 =#
 
-∇ = @sblock let trn
-    k = fullfreq(trn)
-    ik1 = Xfourier(trn, im .* k[1]) |> DiagOp
-    ik2 = Xfourier(trn, im .* k[2]) |> DiagOp
-    (ik1, ik2)
+vϕ = @sblock let trn, ϕ
+    ∇θf, sinθ⁻¹∇φf = HealpixTransforms.∇(ϕ[!], trn)[1:2]
+    sinθ = sin.(pix(trn)[1])
+    Xmap(trn,∇θf), Xmap(trn,sinθ⁻¹∇φf ./ sinθ)
 end
 
-L, Lʰ = let trn=trn, nsteps=16, ϕ=ϕ
-    vϕ = (∇[1] * ϕ, ∇[2] * ϕ)
+#=
+eqvϕ1,  = HealpixTransforms.get_eq_belt(vϕ[1][:])
+eqvϕ2,  = HealpixTransforms.get_eq_belt(vϕ[2][:])
+eqvϕ1 |> matshow; colorbar()
+eqvϕ2 |> matshow; colorbar()
+=#
+
+
+L, Lʰ = @sblock let trn, vϕ, nsteps=16
     t₀ = 0
     t₁ = 1
-    nsteps = 16 
     L  = FieldLensing.Xlense(trn, vϕ, t₀, t₁, nsteps)
     L, L' 
 end
 
-lenT1 = L * T
-lenT2 = Xmap(trn, FieldLensing.flowRK38(L,T[:]))
-T1 = L \ lenT1
-T2 = Xmap(trn, FieldLensing.flowRK38(inv(L),lenT2[:]))
+@time lenT1 = L * T
+
+# lenT2 = Xmap(trn, FieldLensing.flowRK38(L,T[:]))
+# T1 = L \ lenT1
+# T2 = Xmap(trn, FieldLensing.flowRK38(inv(L),lenT2[:]))
 #=
-T[:] |> matshow
-lenT1[:] |> matshow
-lenT2[:] |> matshow
-(T - lenT1)[:] |> matshow; colorbar()
-(T - lenT2)[:] |> matshow; colorbar()
-(T - T1)[:] |> matshow; colorbar()
-(T - T2)[:] |> matshow; colorbar()
+
+@sblock let T′ = lenT1, T
+    eqT,  = HealpixTransforms.get_eq_belt(T[:])
+    eqT′,  = HealpixTransforms.get_eq_belt(T′[:])
+    eqT[1:500,1:500]   |> matshow; colorbar()
+    eqT′[1:500, 1:500] |> matshow; colorbar()
+    eqT .- eqT′  |> matshow; colorbar()
+end 
+
 =#
 
 
