@@ -1,44 +1,46 @@
 # Xlense and XlensePlan
 # ===============================================
+# d is the dimension of the Xfield storage 
+# m is the intrinsic dimension of the field (i.e ndims(∇))
 
-struct Xlense{Trn<:Transform,Tf,Ti,d}  <: AbstractFlow{Trn,Tf,Ti,d}
+struct Xlense{m,Trn<:Transform,Tf,Ti,d}  <: AbstractFlow{Trn,Tf,Ti,d}
 	trn::Trn
-	v::NTuple{d,Xmap{Trn,Tf,Ti,d}}
+	v::NTuple{m,Xmap{Trn,Tf,Ti,d}}
 	t₀::Int # make this Float64 ?
 	t₁::Int
 	nsteps::Int
 end
 
-function Xlense(trn::Trn, v::NTuple{d,Xmap{Trn,Tf,Ti,d}}, t₀, t₁, nsteps) where {Tf,Ti,d,Trn<:Transform{Tf,d}}
-	Xlense{Trn,Tf,Ti,d}(trn, v, t₀, t₁, nsteps)
+function Xlense(trn::Trn, v::NTuple{m,Xmap{Trn,Tf,Ti,d}}, t₀, t₁, nsteps) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+	Xlense{m,Trn,Tf,Ti,d}(trn, v, t₀, t₁, nsteps)
 end
 
-function Base.inv(L::Xlense{Trn,Tf,Ti,d}) where {Tf,Ti,d,Trn<:Transform{Tf,d}}
-	Xlense{Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
+function Base.inv(L::Xlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+	Xlense{m,Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
 end
 
-struct XlensePlan{Trn<:Transform,Tf,Ti,d}
+struct XlensePlan{m,Trn<:Transform,Tf,Ti,d}
 	trn::Trn
-	k::  NTuple{d,Array{Tf,d}}    
-	vx:: NTuple{d,Array{Tf,d}}  
+	k::  NTuple{m,Array{Tf,d}}    
+	vx:: NTuple{m,Array{Tf,d}}  
 	∂vx::Matrix{Array{Tf,d}}    
 	mx:: Matrix{Array{Tf,d}}    # the following are storage
-	px:: NTuple{d,Array{Tf,d}}    
-	∇y:: NTuple{d,Array{Tf,d}}    
+	px:: NTuple{m,Array{Tf,d}}    
+	∇y:: NTuple{m,Array{Tf,d}}    
 	sk:: Array{Ti,d}
 	yk:: Array{Ti,d} 
 end
 
-# Vector field method (d==1). Note: overwrites v
-function (Lp::XlensePlan{Trn})(v::Array{Tf,1}, t::Real, y::Array{Tf,1}) where {Tf,Trn<:Transform{Tf,1}}
+# Vector field method (m==1). Note: overwrites v
+function (Lp::XlensePlan{1,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}
 	@avx @. Lp.mx[1,1]  = 1 / (1 + t * Lp.∂vx[1,1])
 	@avx @. Lp.px[1]    = Lp.mx[1,1] * Lp.vx[1]
 	gradient!(Lp.∇y, y, Lp) 
 	@avx @. v =  px[1] * Lp.∇y[1] # pxⁱ⋅ ∇ⁱ ⋅ yx
 end
 
-# Vector field method (d==2). Note: overwrites v
-function (Lp::XlensePlan{Trn})(v::Array{Tf,2}, t::Real, y::Array{Tf,2}) where {Tf,Trn<:Transform{Tf,2}}		
+# Vector field method (m==2). Note: overwrites v
+function (Lp::XlensePlan{2,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}		
 	m11,  m12,  m21,  m22  = Lp.mx[1,1],  Lp.mx[1,2],  Lp.mx[2,1],  Lp.mx[2,2]
 	∂v11, ∂v12, ∂v21, ∂v22 = Lp.∂vx[1,1], Lp.∂vx[1,2], Lp.∂vx[2,1], Lp.∂vx[2,2]
 	p1, p2, v1, v2         = Lp.px[1], Lp.px[2], Lp.vx[1], Lp.vx[2]

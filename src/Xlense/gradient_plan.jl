@@ -2,10 +2,10 @@
 # Extendable methods: plan, gradient!
 # =====================================================
 
-# Default for Trn <: 𝕎
+# Default for Trn <: 𝕎, m == d
 # -------------------------------------------
 
-function plan(L::Xlense{Trn,Tf,Ti,d}) where {Tf,Ti,d,Trn<:FFTransforms.𝕎{Tf,d}}
+function plan(L::Xlense{d,Trn,Tf,Ti,d}) where {Tf,Ti,d,Trn<:FFTransforms.𝕎{Tf,d}}
 	szf, szi =  size_in(L.trn), size_out(L.trn)
 	k   = FFTransforms.fullfreq(L.trn)
 	vx  = tuple((L.v[i][:] for i=1:d)...)
@@ -15,10 +15,11 @@ function plan(L::Xlense{Trn,Tf,Ti,d}) where {Tf,Ti,d,Trn<:FFTransforms.𝕎{Tf,d
 	∇y  = deepcopy(vx)
 	sk  = zeros(Ti,szi)
 	yk  = zeros(Ti,szi)
-	XlensePlan{Trn,Tf,Ti,d}(L.trn,k,vx,∂vx,mx,px,∇y,sk,yk)
+	XlensePlan{d,Trn,Tf,Ti,d}(L.trn,k,vx,∂vx,mx,px,∇y,sk,yk)
 end
 
-function gradient!(∇y::NTuple{d,Array{Tf,d}}, y::Array{Tf,d}, Lp::XlensePlan{Trn}) where {Tf,d,Trn<:FFTransforms.𝕎{Tf,d}}
+# assumes m == d in this case
+function gradient!(∇y::NTuple{d,Array{Tf,d}}, y::Array{Tf,d}, Lp::XlensePlan{d,Trn}) where {Tf,d,Trn<:FFTransforms.𝕎{Tf,d}}
 	FFT = FFTransforms.plan(Lp.trn)
 	mul!(Lp.yk, FFT.unscaled_forward_transform, y)
 	for i = 1:d

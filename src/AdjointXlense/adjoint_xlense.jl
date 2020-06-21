@@ -1,44 +1,44 @@
 # AdjointXlense and AdjointXlensePlan
 # ===============================================
 
-struct AdjointXlense{Trn<:Transform,Tf,Ti,d}  <: AbstractFlow{Trn,Tf,Ti,d}
+struct AdjointXlense{m,Trn<:Transform,Tf,Ti,d}  <: AbstractFlow{Trn,Tf,Ti,d}
 	trn::Trn
-	v::NTuple{d,Xmap{Trn,Tf,Ti,d}}
+	v::NTuple{m,Xmap{Trn,Tf,Ti,d}}
 	t₀::Int 
 	t₁::Int
 	nsteps::Int	
 end
 
-function AdjointXlense(trn::Trn, v::NTuple{d,Xmap{Trn,Tf,Ti,d}}, t₀, t₁, nsteps) where {Tf,Ti,d,Trn<:Transform{Tf,d}}
-	AdjointXlense{Trn,Tf,Ti,d}(trn, v, t₀, t₁, nsteps)
+function AdjointXlense(trn::Trn, v::NTuple{m,Xmap{Trn,Tf,Ti,d}}, t₀, t₁, nsteps) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+	AdjointXlense{m,Trn,Tf,Ti,d}(trn, v, t₀, t₁, nsteps)
 end
 
-function Base.inv(L::AdjointXlense{Trn,Tf,Ti,d}) where {Tf,Ti,d,Trn<:Transform{Tf,d}}
-	AdjointXlense{Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
+function Base.inv(L::AdjointXlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+	AdjointXlense{m,Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
 end
 
-function LinearAlgebra.adjoint(L::Xlense{Trn,Tf,Ti,d}) where {Tf,Ti,d,Trn<:Transform{Tf,d}}
-	AdjointXlense{Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
+function LinearAlgebra.adjoint(L::Xlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+	AdjointXlense{m,Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
 end
 
-function LinearAlgebra.adjoint(L::AdjointXlense{Trn,Tf,Ti,d}) where {Tf,Ti,d,Trn<:Transform{Tf,d}}
-	Xlense{Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
+function LinearAlgebra.adjoint(L::AdjointXlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+	Xlense{m,Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
 end
 
-struct AdjointXlensePlan{Trn<:Transform,Tf,Ti,d} 
+struct AdjointXlensePlan{m,Trn<:Transform,Tf,Ti,d} 
 	trn::Trn
-	k::  NTuple{d,Array{Tf,d}}    
-	vx:: NTuple{d,Array{Tf,d}}  
+	k::  NTuple{m,Array{Tf,d}}    
+	vx:: NTuple{m,Array{Tf,d}}  
 	∂vx::Matrix{Array{Tf,d}}    
 	mx:: Matrix{Array{Tf,d}}    # the following are storage
-	px:: NTuple{d,Array{Tf,d}}    
-	∇y:: NTuple{d,Array{Tf,d}}    
+	px:: NTuple{m,Array{Tf,d}}    
+	∇y:: NTuple{m,Array{Tf,d}}    
 	sk:: Array{Ti,d}
 	yk:: Array{Ti,d}  
 end
 
-# Vector field method (d==1). Note: overwrites v
-function (Lp::AdjointXlensePlan{Trn})(v::Array{Tf,1}, t::Real, y::Array{Tf,1}) where {Tf,Trn<:Transform{Tf,1}}
+# Vector field method (m==1). Note: overwrites v
+function (Lp::AdjointXlensePlan{1,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {d,Tf,Trn<:Transform{Tf,d}}
 	@avx @. Lp.mx[1,1]  = 1 / (1 + t * Lp.∂vx[1,1])
 	@avx @. Lp.px[1]    = Lp.mx[1,1] * Lp.vx[1] * y[i]
 	gradient!(Lp.∇y, (Lp.px[1],), Lp) 
@@ -46,7 +46,7 @@ function (Lp::AdjointXlensePlan{Trn})(v::Array{Tf,1}, t::Real, y::Array{Tf,1}) w
 end
 
 # Vector field method (d==2). Note: overwrites v
-function (Lp::AdjointXlensePlan{Trn})(v::Array{Tf,2}, t::Real, y::Array{Tf,2}) where {Tf,Trn<:Transform{Tf,2}}
+function (Lp::AdjointXlensePlan{2,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {d,Tf,Trn<:Transform{Tf,d}}
 	m11,  m12,  m21,  m22  = Lp.mx[1,1],  Lp.mx[1,2],  Lp.mx[2,1],  Lp.mx[2,2]
 	∂v11, ∂v12, ∂v21, ∂v22 = Lp.∂vx[1,1], Lp.∂vx[1,2], Lp.∂vx[2,1], Lp.∂vx[2,2]
 	p1y, p2y, v1, v2         = Lp.px[1], Lp.px[2], Lp.vx[1], Lp.vx[2]

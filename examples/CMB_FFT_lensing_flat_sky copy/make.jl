@@ -148,6 +148,7 @@ lenT1 = L * T
 lenT2 = Xmap(trn, FieldLensing.flowRK38(L,T[:]))
 T1 = L \ lenT1
 T2 = Xmap(trn, FieldLensing.flowRK38(inv(L),lenT2[:]))
+
 #=
 T[:] |> matshow
 lenT1[:] |> matshow
