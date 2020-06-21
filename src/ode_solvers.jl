@@ -1,4 +1,3 @@
-
 # The nice format here from Marius in CMBLensing.jl
 
 # RK 4 rule
@@ -16,8 +15,6 @@ function odesolve_RK4(f!, y₀, t₀, t₁, nsteps)
     end
     return y
 end
-
-
 
 # RK 3/8 rule
 function odesolve_RK38(f!, y₀, t₀, t₁, nsteps)
