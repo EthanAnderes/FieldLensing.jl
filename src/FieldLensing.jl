@@ -12,21 +12,9 @@ export AbstractFlow, flow
 
 abstract type AbstractFlow{Trn<:Transform,Tf,Ti,d} end
 
-# Methods for interface for 
-# • MyFlow{Trn,Tf,Ti,d} <: AbstractFlow{Trn,Tf,Ti,d}
-# • MyFlow has fields t₀, t₁, nsteps
-# • inv(L::MyFlow) 
-# • plan(L::MyFlow) -> MyFlowPlan{Trn,Tf,Ti,d}. (can be set so that plan(L) = L)
-# • (Lp::XlensePlan)(NTuple{d,Array}, Real, Array) overwrites first arg
-# • gradient!(..., ..., XlensePlan)
-
-# Generally the design ...
-# Xlense is a high level holder of information sufficient 
-# for generating a lense plan
-
-# XlensePlan is a low level type with pre-computed variables 
-# for fast computation of the Xlense vector field
-
+# plan(L), fallback
+# ----------------------------
+plan(L::AbstractFlow) = L
 
 # flow(L, f)
 # -----------------------------
@@ -45,7 +33,6 @@ end
 # function FieldLensing.flow(L::Xlense{Trn}, f::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}
 #	FieldLensing.flowRK38(L)
 # end
-
 
 # flow(L,f) where f is a Map Field
 function flow(L::AbstractFlow{Trn,Tf,Ti,d}, f::MF)  where {Tf, Ti, d, Trn<:Transform{Tf,d}, MF<:MapField{Trn,Tf,Ti,d}} 

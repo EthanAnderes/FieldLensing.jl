@@ -26,9 +26,3 @@ function gradient!(∇y::NTuple{d,Array{Tf,d}}, y::Array{Tf,d}, Lp::XlensePlan{T
 		mul!(∇y[i], FFT.unscaled_inverse_transform, Lp.sk)
 	end
 end
-
-# Default for Trn <: 𝕊
-# -------------------------------------------
-
-# Default for Trn <: ℍ
-# -------------------------------------------

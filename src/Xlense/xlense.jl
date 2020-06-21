@@ -4,7 +4,7 @@
 struct Xlense{Trn<:Transform,Tf,Ti,d}  <: AbstractFlow{Trn,Tf,Ti,d}
 	trn::Trn
 	v::NTuple{d,Xmap{Trn,Tf,Ti,d}}
-	t₀::Int 
+	t₀::Int # make this Float64 ?
 	t₁::Int
 	nsteps::Int
 end

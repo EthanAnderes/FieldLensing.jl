@@ -1,3 +1,32 @@
+#src This file generates:        
+#src - `example.ipynb`           
+#src - `example.md`              
+#src                             
+#src Build with `julia make.jl`   
+
+
+using Literate              #src
+                            #src
+                            #src
+config = Dict(                      #src
+    "documenter"    => false,       #src
+    "keep_comments" => true,        #src
+    "execute"       => true,        #src
+    "name"          => "example",   #src
+    "credit"        => false,       #src
+)                                   #src
+
+Literate.notebook(          #src
+    "make.jl",              #src
+    config=config,          #src
+)                           #src
+                            #src
+Literate.markdown(          #src
+    "make.jl",              #src
+    config=config,          #src
+)                           #src
+
+
 
 #=
 ENV["JULIA_FFTW_PROVIDER"] = "MKL"
@@ -90,7 +119,13 @@ fig.colorbar(pcm1, ax = ax[1])
 fig.colorbar(pcm2, ax = ax[2])
 ax[1].set_title(L"T(x)")
 ax[2].set_title(L"\phi(x)")
+
 fig.tight_layout()
+savefig(joinpath(@__DIR__,"plot1.png")) #src
+close() #src
+#md # ![plot1](plot1.png)
+#nb gcf() 
+
 =#
 
 ∇ = let trn = trn 
