@@ -40,12 +40,12 @@ FFTW.set_num_threads(5)
 using FieldLensing
 using XFields
 using FFTransforms
-using CMBspectra
+using Spectra
 using Interpolations 
 using PyPlot # TODO add this to test/Project.toml
 
 clTfun, clϕfun = let
-	cld = CMBspectra.camb_cls(;
+	cld = Spectra.camb_cls(;
         lmax    = 8050, 
         r       = 0.1,
         ωb      = 0.0224567, 

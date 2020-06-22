@@ -1,5 +1,5 @@
 [deps]
-CMBspectra = "8da7f3c5-fb1b-42d3-91b9-3c2bc450b4c2"
+Spectra = "8da7f3c5-fb1b-42d3-91b9-3c2bc450b4c2"
 FFTransforms = "41ee4b3b-6d90-492a-9c4b-6a995b15ca9c"
 FieldLensing = "17931224-7cbf-4caf-b3a8-b20a7f1b766b"
 Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
