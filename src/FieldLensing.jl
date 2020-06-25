@@ -53,15 +53,19 @@ Base.:\(L::AbstractFlow, f) = flow(inv(L),f)
 # Pre-installed AbstractFlow types and methods
 # =========================================
 
+# ArrayLense
+export ArrayLense
+include("array_lense.jl")
+
 # Xlense
 export Xlense
-include("Xlense/xlense.jl")
-include("Xlense/gradient_plan.jl")
+include("xlense/xlense.jl")
+include("xlense/gradient_plan.jl")
 
 # AdjointXlense
 export AdjointXlense
-include("AdjointXlense/adjoint_xlense.jl")
-include("AdjointXlense/gradient_plan.jl")
+include("adjoint_xlense/adjoint_xlense.jl")
+include("adjoint_xlense/gradient_plan.jl")
 
 
 
