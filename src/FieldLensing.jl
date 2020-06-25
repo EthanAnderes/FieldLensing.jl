@@ -31,13 +31,13 @@ function flowRK38(L::AbstractFlow{Trn,Tf,Ti,d}, f::Array{Tf,d}) where {Tf, Ti, d
 end
 
 # flow(L,f) where f is a Map Field
-function flow(L::AbstractFlow{Trn,Tf,Ti,d}, f::MF)  where {Tf, Ti, d, Trn<:Transform{Tf,d}, MF<:MapField{Trn,Tf,Ti,d}} 
+function flow(L::AbstractFlow, f::MF)  where {MF<:MapField} 
 	tr = fieldtransform(f)
 	MF(tr, flow(L, f[:]))
 end
 
 # flow(L,f) where f is a Fourier Field
-function flow(L::AbstractFlow{Trn,Tf,Ti,d}, f::FourierField{Trn,Tf,Ti,d})  where {Tf, Ti, d, Trn<:Transform{Tf,d}} 
+function flow(L::AbstractFlow, f::FourierField) # where {Tf, Ti, d, Trn<:Transform{Tf,d}} 
 	FourierField(flow(L,MapField(f)))
 end
 
