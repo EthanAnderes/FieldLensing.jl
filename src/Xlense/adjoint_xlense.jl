@@ -40,7 +40,7 @@ end
 # Vector field method (m==1). Note: overwrites v
 function (Lp::AdjointXlensePlan{1,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {d,Tf,Trn<:Transform{Tf,d}}
 	@avx @. Lp.mx[1,1]  = 1 / (1 + t * Lp.∂vx[1,1])
-	@avx @. Lp.px[1]    = Lp.mx[1,1] * Lp.vx[1] * y[i]
+	@avx @. Lp.px[1]    = Lp.mx[1,1] * Lp.vx[1] * y
 	gradient!(Lp.∇y, (Lp.px[1],), Lp) 
 	@avx @. v =  Lp.∇y[1] # ∇ⁱ ⋅ pxⁱ ⋅ yx
 end

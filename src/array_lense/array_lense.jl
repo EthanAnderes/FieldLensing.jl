@@ -1,5 +1,5 @@
 
-# Array lense for working with 
+# Array lensing
 # ===============================================
 # d is the dimension of the Xfield storage 
 # m is the intrinsic dimension of the field (i.e ndims(∇))

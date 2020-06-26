@@ -54,18 +54,19 @@ Base.:\(L::AbstractFlow, f) = flow(inv(L),f)
 # =========================================
 
 # ArrayLense
-export ArrayLense
-include("array_lense.jl")
+export ArrayLense, ArrayLenseᴴ
 
-# Xlense
-export Xlense
+include("array_lense/array_lense.jl")
+include("array_lense/adjoint_array_lense.jl")
+
+# Xlense and AdjointXlense
+export Xlense, AdjointXlense
+
 include("xlense/xlense.jl")
-include("xlense/gradient_plan.jl")
+include("xlense/xlense_gradient_plan.jl")
 
-# AdjointXlense
-export AdjointXlense
-include("adjoint_xlense/adjoint_xlense.jl")
-include("adjoint_xlense/gradient_plan.jl")
+include("xlense/adjoint_xlense.jl")
+include("xlense/adjoint_xlense_gradient_plan.jl")
 
 
 
