@@ -1,11 +1,12 @@
 #src Build with 
 #src  ```
 #src  julia make.jl
-#src  jupyter nbconvert note.ipynb
+#src  jupyter nbconvert example.ipynb
 #src  ```
 using Literate                      #src
 config = Dict(                      #src
     "documenter"    => false,       #src
+    "keep_comments" => false,       #src
     "execute"       => true,        #src
     "name"          => "example",   #src
     "credit"        => false,       #src
@@ -38,10 +39,11 @@ using BenchmarkTools
 # Set the Xfield transform 
 # ----------
 
-trn = @sblock let T=Float64, Nside=2048 # 1024
+trn = @sblock let T=Float64, Nside=1024 # 2048 # 1024
     spin = 0
     𝕊(T, 2*Nside, spin)
 end
+
 
 #-
 
@@ -110,206 +112,187 @@ T[:] |> matshow; colorbar(); gcf()
 
 
 
-# Map derivaties w.r.t θ, φ
-# --------------------
-using SphereTransforms.FastTransforms: chebyshevpoints
-θ = acos.(chebyshevpoints(Float64, trn.nθ; kind=1))
-sin⁻¹θ = 1 ./ sin.(θ)
-
-# nφ = trn.nφ
-# nθ = trn.nθ
-# IW = 𝕀(trn.nθ)⊗r𝕎(trn.nφ, 2π)
-# let IW = IW , ikφ = im * (0:trn.nφ÷2)', sin⁻¹θ = inv.(sin.(acos.(chebyshevpoints(Float64, nθ; kind=1)))) # i.e. has length nφ÷2+1
-#     global function ∂φ(fmap::T)::T where {R,T<:Array{R,2}}
-#         planIW = FFTransforms.plan(IW)
-#         return sin⁻¹θ .* (planIW \ (ikφ .* (planIW * fmap)))
-#     end
-#     global function ∂φ!(outmap, fmap, sk) # sk is fourier storage
-#         planIW = FFTransforms.plan(IW)
-#         mul!(sk, planIW.unscaled_forward_transform, fmap)
-#         @inbounds @. sk = sk * ikφ * planIW.scale_forward * planIW.scale_inverse
-#         mul!(outmap, planIW.unscaled_inverse_transform, sk)
-#     end
-# end
-
-#-
-
-hθ = Δθ(trn) 
-# ∂θmat = spdiagm(
-#         -2 => fill( 1/12/hθ, trn.nθ-2),
-#         -1 => fill(-2/3/hθ,  trn.nθ-1),
-#         0  => fill( 0.0,     trn.nθ),
-#         1  => fill( 2/3/hθ,  trn.nθ-1),
-#         2  => fill(-1/12/hθ, trn.nθ-2)  
-# )
-∂θmat = spdiagm(
-        -1 => fill(-1/(2hθ),  trn.nθ-1),
-        1  => fill( 1/(2hθ),  trn.nθ-1),
-)
-
-# let ∂θmat=∂θmat
-#     global ∂θ(fmap) = ∂θmat * fmap
-#     #global ∂θ!(outmap, fmap) = mul!(outmap, ∂θmat, fmap)
-# end
-@eval ∂θ(fmap) = $∂θmat * fmap
-
-hφ = Δφ(trn)
-∂φmatᵀ2 = (1/hφ) * spdiagm(
-        -2 => fill( 1/12, trn.nφ-2),
-        -1 => fill(-2/3,  trn.nφ-1),
-        1  => fill( 2/3,  trn.nφ-1),
-        2  => fill(-1/12, trn.nφ-2)  
-)'
-∂φmatᵀ = transpose(
-        spdiagm(
-            -1 => fill( -1/2,  trn.nφ-1),
-            # 0  => fill( 0.0,      trn.nφ),
-            1  => fill( 1/2,  trn.nφ-1),
-        ) 
-    )
-
-# let ∂φmatᵀ=∂φmatᵀ, θ = acos.(chebyshevpoints(Float64, nθ; kind=1))
-#     global ∂φ(fmap) = (1 ./ sin.(θ)) .* (fmap * ∂φmatᵀ)
-#     global ∂φ!(outmap, fmap) = mul!(outmap, fmap, ∂φmatᵀ)
-# end
-@eval distinaz(t) = 2asin( sin(t)*sin($hφ/2) )
-@eval ∂φforϕ(fmap) =  (fmap * $∂φmatᵀ) ./ $(distinaz.(θ)) 
-@eval ∂φ(fmap) =  (fmap * $∂φmatᵀ2)
-
-# φ = pix(trn)[2]
-# ∂φ(ones(size(θ)).* φ')
 
 
-# Use the map derivaties to compute the displacement fields
-# --------------------
+# Equitorial belt with ArrayLense
+# ======================================
+# To use ArrayLense we just need to define ∇!
 
-
-vϕ = @sblock let trn, ϕ, θ= θ
-    ϕmap = ϕ[:]
-    #Xmap(trn, ∂θ(ϕmap)), Xmap(trn, (1 ./ sin.(θ)).^2 .* ∂φ(ϕmap))
-    Xmap(trn, ∂θ(ϕmap)), Xmap(trn, ∂φforϕ(ϕmap))
-end;
-
-#-
-
-vϕ[1][:][20:end-20,:] |> matshow; colorbar(); gcf()
-
-#-
-
-vϕ[2][:][200:end-200,2:end-10] |> matshow; colorbar(); gcf()
-
-#-
-
-function α_θφ(θ1,φ1,θ2,φ2) 
-    Δφ = φ1 - φ2
-    Δθ = θ1 - θ2
-    sθ1, sθ2 = sin(θ1), sin(θ2)
-    # return acos(cos(θ1)*cos(θ2) + sin(θ1)*sin(θ2)*cos(Δφ))
-    return 2asin(√(sin(Δθ/2)^2 + sθ1 * sθ2 * sin(Δφ/2)^2))
-end 
-
-θ, φ = pix(trn)
-displacements = α_θφ.(θ,φ',θ .+ vϕ[1][:], φ' .+ vϕ[2][:]) 
-
-displacements[3:end-3,3:end-3] |> matshow; colorbar()
-deg2rad(2.7/60)
-# Now define `plan` and `gradient!` to use Xlense for SphereTransforms
-# --------------------
-
-function FieldLensing.plan(
-        L::Xlense{2,𝕊{Tf},Tf,Ti,2}
-    ) where {Tf<:Float64, Ti<:Float64}
-    szf, szi =  size_in(L.trn), size_out(L.trn)
-    k     = freq(L.trn) |> k -> (Tf.(k[1]), Tf.(k[2]))
-    vx    = tuple(L.v[1][:], L.v[2][:])
-    
-    sk  = zeros(Ti,szi[1], szi[2]÷2+1) # custom since it is storage for real slice fft
-    yk  = zeros(Ti,szi)
-
-    ∂vx = Array{Tf,2}[Array{Tf,2}(undef,szf) for r=1:2, c=1:2]
-    # ∂θ!(∂vx[1,1], vx[1])
-    # ∂θ!(∂vx[2,1], vx[2])
-    # ∂φ!(∂vx[1,2], vx[1])
-    # ∂φ!(∂vx[2,2], vx[2])
-    θ = acos.(chebyshevpoints(Float64, L.trn.nθ; kind=1))
-    ∂vx[1,1] .= ∂θ(vx[1])
-    ∂vx[2,1] .= ∂θ(vx[2])
-    ∂vx[1,2] .= ∂φ(vx[1])
-    ∂vx[2,2] .= ∂φ(vx[2])
-
-    mx  = deepcopy(∂vx)
-    px  = deepcopy(vx)
-    ∇y  = deepcopy(vx)
-
-    FieldLensing.XlensePlan{2,𝕊{Tf},Tf,Ti,2}(L.trn,k,vx,∂vx,mx,px,∇y,sk,yk)
+struct Nabla!{Tθ,Tφ}
+    ∂θ::Tθ
+    ∂φᵀ::Tφ
 end
 
-function FieldLensing.gradient!(
-        ∇y::NTuple{2,Array{Tf,2}}, 
-        y::Array{Tf,2}, 
-        Lp::FieldLensing.XlensePlan{2,𝕊{Tf},Tf,Ti,2}
-    )  where {Tf<:Float64, Ti<:Float64}
-    ∇y[1] .= ∂θ(y)
-    ∇y[2] .= ∂φ(y)
-    #θ = acos.(chebyshevpoints(Float64, L.trn.nθ; kind=1))
-    #∇y[2] .= sin.(θ) .* ∂φ(y)
+function (∇!::Nabla!{Tθ,Tφ})(∇y::NTuple{2,A}, y::NTuple{2,A}) where {Tθ,Tφ,Tf,A<:Array{Tf,2}}
+    mul!(∇y[1], ∇!.∂θ, y[1])
+    mul!(∇y[2], y[2], ∇!.∂φᵀ)
+    ∇y
+end
+
+function (∇!::Nabla!{Tθ,Tφ})(∇y::NTuple{2,A}, y::A) where {Tθ,Tφ,Tf,A<:Array{Tf,2}}
+    ∇!(∇y, (y,y))
+end
+
+function (∇!::Nabla!{Tθ,Tφ})(y::A) where {Tθ,Tφ,Tf,A<:Array{Tf,2}}
+    ∇y = (similar(y), similar(y))
+    ∇!(∇y, (y,y))
+    ∇y
+end
+
+# Construct ∂θ (action by left mult)
+#------------------------
+#  for healpix on the equitorial belt, cos(θ) is on an even grid.
+
+# using SphereTransforms.FastTransforms: chebyshevpoints
+# cosθ = chebyshevpoints(Float64, trn.nθ; kind=1)
+∂θ = @sblock let trn 
+    onesnθm1 = fill(1,trn.nθ-1)
+    ∂θ = (1 / (2Δθ(trn))) * spdiagm(-1 => .-onesnθm1, 1 => onesnθm1)
+    ∂θ[1,:] .= 0
+    ∂θ[end,:] .= 0
+    ∂θ
 end
 
 
-# Construct lense 
-# ---------------
+# Construct ∂φᵀ (action by right mult)
+#------------------------
 
-# Now construct the lensing and adjoint lensing operator
+∂φᵀ = @sblock let trn 
+    onesnφm1 = fill(1,trn.nφ-1)
+    ∂φ      = spdiagm(-1 => .-onesnφm1, 1 => onesnφm1)
+    ## for the periodic boundary conditions
+    ∂φ[1,end] = -1
+    ∂φ[end,1] =  1
+    ## now as a right operator
+    ## (∂φ * f')' == ∂/∂φ f == f * ∂φᵀ
+    ∂φᵀ = transpose((1 / (2Δφ(trn))) * ∂φ);
+    ∂φᵀ
+end
 
-L = @sblock let trn, vϕ, nsteps=16
+# belt displacement field
+### The following leads to some systematics at the edges
+vϕbelt = @sblock let trn, ϕ, ∂θ, ∂φᵀ
+    θ = pix(trn)[1]
+    #sinθ = sin.(θ)
+    #cscθ = csc.(θ) # 1/sinθ
+    sin⁻²θ = 1 .+ (cot.(θ)).^2 # = cscθ^2
+
+    ϕbelt = ϕ[:]
+    ∂θϕ = ∂θ * ϕbelt
+    ∂φϕ = ϕbelt * ∂φᵀ
+    v1_eθφ_belt = ∂θϕ
+    v2_eθφ_belt = ∂φϕ .* sin⁻²θ
+    (v1_eθφ_belt, v2_eθφ_belt)
+end
+
+# Now construct the lense 
+L = @sblock let v=vϕbelt, ∂θ, ∂φᵀ,  ∇! = Nabla!(∂θ, ∂φᵀ), nsteps=16
     t₀ = 0
     t₁ = 1
-    L  = FieldLensing.Xlense(trn, 0.5 .* vϕ, t₀, t₁, nsteps)
-    L
+    FieldLensing.ArrayLense(v, ∇!, t₀, t₁, nsteps)
 end;
 
-# Lense the field
-# ---------------
-
-# Forward lensing field
-
-@time lenT1 = L * T
-lenT1[:][2:300,2:300] |> matshow; colorbar(); gcf()
-lenT1[:][1000:2000,2:300] |> matshow; colorbar(); gcf()
-
-# Difference between lensed and un-lensed
-
-(T - lenT1)[:][1000:end-1000,10:2000] |> matshow; colorbar(); gcf()
-
-# Invert the lense and compare
-
-T1 = L \ lenT1
-(T - T1)[:] |> matshow; colorbar(); gcf()
-
-
-# adjoint Lense the field
-# ---------------
-
-# Forward adjoint lensing field
-
-lenʰT1 = Lʰ * T
-
-# Difference between adjoint lensing and un-lensed
-
-(T - lenʰT1)[:] |> matshow; colorbar(); gcf()
-
-# Invert the lense and compare
-
-ʰT1 = Lʰ \ lenʰT1
-(T - T1)[:] |> matshow; colorbar(); gcf()
-
-
-# Finally some benchmarks
-# ----------------
-
-@benchmark $L * $T
+#-
+Tbelt = T[:]
+@time lenTbelt = L * Tbelt
 
 #-
+lenTbelt[50:end-50,:] |> matshow; colorbar(); gcf()
 
-@benchmark $Lʰ * $T
+#-
+(lenTbelt .- Tbelt)[50:end-50,:] |> matshow; colorbar(); gcf()
+
+# ### Inverse Lense 
+
+#-
+@time Tbelt′ = L \ lenTbelt
+
+#-
+(Tbelt′ .- Tbelt)[100:end-100,:] |> matshow; colorbar(); gcf()
+
+
+
+#-
+@benchmark $L * $T
+
+
+
+# FFT in azimuth with ArrayLense
+# ======================================
+# To use ArrayLense we just need to define ∇!
+
+struct Nabla!′{Tθ,T1φ,T2φ,T3φ}
+    ∂θ::Tθ
+    planFFT::T1φ
+    ikφ::T2φ
+    ak::T3φ
+end
+
+function (∇!::Nabla!′{Tθ,T1φ,T2φ,T3φ})(∇y::NTuple{2,A}, y::NTuple{2,A}) where {Tθ,T1φ,T2φ,T3φ,Tf,A<:Array{Tf,2}}
+    mul!(∇y[1], ∇!.∂θ, y[1])
+
+    mul!(∇!.ak, ∇!.planFFT.unscaled_forward_transform, y[2])
+    @inbounds @. ∇!.ak = ∇!.ak * ∇!.ikφ * ∇!.planFFT.scale_forward * ∇!.planFFT.scale_inverse
+    mul!(∇y[2], ∇!.planFFT.unscaled_inverse_transform, ∇!.ak)
+    ∇y
+end
+
+function (∇!::Nabla!′{Tθ,T1φ,T2φ,T3φ})(∇y::NTuple{2,A}, y::A) where {Tθ,T1φ,T2φ,T3φ,Tf,A<:Array{Tf,2}}
+    ∇!(∇y, (y,y))
+end
+
+function (∇!::Nabla!′{Tθ,T1φ,T2φ,T3φ})(y::A) where {Tθ,T1φ,T2φ,T3φ,Tf,A<:Array{Tf,2}}
+    ∇y = (similar(y), similar(y))
+    ∇!(∇y, (y,y))
+    ∇y
+end
+
+#-
+𝕨     = 𝕀(trn.nθ) ⊗ r𝕎(trn.nφ, 2π)
+plan𝕨 = FFTransforms.plan(𝕨)
+kφ    = FFTransforms.freq(𝕨)[2]' |> Array
+ak    = zeros(eltype_out(𝕨), size_out(𝕨))
+∇!′   = Nabla!′(∂θ, plan𝕨, im .* kφ, ak)
+
+#-
+vϕbelt′ = @sblock let ∇!′, trn, ϕ
+    θ = pix(trn)[1]
+    sin⁻²θ = 1 .+ (cot.(θ)).^2 # = cscθ^2
+
+    ϕbelt = ϕ[:]
+    vϕ′ = ∇!′(ϕbelt)
+    (vϕ′[1], vϕ′[2] .* sin⁻²θ)
+end
+
+# Now construct the lense 
+L′ = @sblock let v=vϕbelt′, ∇!′, nsteps=16
+    t₀ = 0
+    t₁ = 1
+    FieldLensing.ArrayLense(v, ∇!′, t₀, t₁, nsteps)
+end;
+
+#-
+Tbelt = T[:]
+@time lenTbelt′ = L′ * Tbelt
+
+#-
+lenTbelt′[250:end-250,:] |> matshow; colorbar(); gcf()
+
+#-
+(Tbelt - lenTbelt′)[250:end-250,:] |> matshow; colorbar(); gcf()
+
+#-
+(lenTbelt - lenTbelt′)[250:end-250,:] |> matshow; colorbar(); gcf()
+
+#- 
+@time Tbelt′′ = L′ \ lenTbelt′
+
+# See how well forward, then backward lensing (with fft in azimuth) does 
+# for recovering the original field
+(Tbelt′′ - Tbelt)[500:end-500,:] |> matshow; colorbar(); gcf()
+
+
+# Compare with how well the map space operator does
+(Tbelt′ - Tbelt)[500:end-500,:] |> matshow; colorbar(); gcf()
+
 
