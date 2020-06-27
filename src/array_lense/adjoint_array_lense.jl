@@ -26,11 +26,11 @@ function Base.inv(L::ArrayLenseᴴ{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
 end
 
 function LinearAlgebra.adjoint(L::ArrayLense{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
-	ArrayLenseᴴ{m,Tf,d,Tg,Tt}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
+	ArrayLenseᴴ(L.v, L.∇!, L.t₁, L.t₀, L.nsteps)
 end
 
 function LinearAlgebra.adjoint(L::ArrayLenseᴴ{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
-	ArrayLense{m,Tf,d,Tg,Tt}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
+	ArrayLense(L.v, L.∇!, L.t₁, L.t₀, L.nsteps)
 end
 
 
