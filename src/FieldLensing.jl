@@ -1,6 +1,7 @@
 module FieldLensing
 
 using XFields
+using XFields: AbstractLinearOp
 import FFTransforms
 using LinearAlgebra
 using LoopVectorization
@@ -10,7 +11,7 @@ using LoopVectorization
 
 export AbstractFlow, flow 
 
-abstract type AbstractFlow{Trn<:Transform,Tf,Ti,d} end
+abstract type AbstractFlow{Trn<:Transform,Tf,Ti,d} <: AbstractLinearOp end
 
 # plan(L), fallback
 # ----------------------------
@@ -47,8 +48,8 @@ include("ode_solvers.jl")
 # `*` and `\` call flow(L, f)
 # -----------------------------
 
-Base.:*(L::AbstractFlow, f) = flow(L,f)
-Base.:\(L::AbstractFlow, f) = flow(inv(L),f)
+Base.:*(L::AbstractFlow, f::Union{Field,Array}) = flow(L,f)
+Base.:\(L::AbstractFlow, f::Union{Field,Array}) = flow(inv(L),f)
 
 # Pre-installed AbstractFlow types and methods
 # =========================================
