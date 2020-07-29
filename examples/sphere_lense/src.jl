@@ -191,8 +191,9 @@ lenTbelt[50:end-50,:] |> matshow; colorbar();
 
 #-
 @benchmark $L * $T
+@benchmark $(L') * $T
 
-
+(L' * T)[:] |> matshow
 
 # FFT in azimuth with ArrayLense
 # ======================================

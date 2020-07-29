@@ -56,35 +56,56 @@ function plan(L::ArrayLenseᴴ{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
 	ArrayLenseᴴPlan{m,Tf,d,Tg,Tt}(L.v, L.∇!, ∂v, mm, p, ∇y)
 end
 
-# Vector field method (m==1). Note: overwrites ẏ
+
+# Vector field method
+# --------------------------------------
+
+# (m==1). Note: overwrites ẏ
 function (Lp::ArrayLenseᴴPlan{1,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}
-	@avx @. Lp.mm[1,1]  = 1 / (1 + t * Lp.∂v[1,1])
-	# the following is p⋅y now
-	@avx @. Lp.p[1]    = Lp.mm[1,1] * Lp.v[1] * y
-	Lp.∇!(Lp.∇y, Lp.p) 
-	@avx @. ẏ =  Lp.∇y[1] # ∇ⁱ ⋅ pxⁱ⋅  yx
+
+	setMp!(Lp.mm, Lp.p, Lp.∂v, Lp.v, t)
+	@avx Lp.p[1] .*= y
+	div!(ẏ, Lp.∇y, Lp.p, Lp.∇!) # sumᵢ ∇ⁱ⋅pxⁱ⋅yx
+
 end
 
-# Vector field method (m==2). Note: overwrites ẏ
+# (m==2). Note: overwrites ẏ
 function (Lp::ArrayLenseᴴPlan{2,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}		
-	m11,  m12,  m21,  m22  = Lp.mm[1,1],  Lp.mm[1,2],  Lp.mm[2,1],  Lp.mm[2,2]
-	∂v11, ∂v12, ∂v21, ∂v22 = Lp.∂v[1,1], Lp.∂v[1,2], Lp.∂v[2,1], Lp.∂v[2,2]
-	p1y, p2y, v1, v2       = Lp.p[1], Lp.p[2], Lp.v[1], Lp.v[2]
-	@avx for i ∈ eachindex(y)
-		m11[i]  = 1 + t * ∂v22[i] 
-		m12[i]  =   - t * ∂v12[i] 
-		m21[i]  =   - t * ∂v21[i] 
-		m22[i]  = 1 + t * ∂v11[i] 
-		dt  = m11[i] * m22[i] - m12[i] * m21[i]
-		m11[i] /= dt
-		m12[i] /= dt
-		m21[i] /= dt
-		m22[i] /= dt
-		# notice the extra y[i] at the end of the following two lines
-		p1y[i]  = (m11[i] * v1[i] + m12[i] * v2[i]) * y[i]
-		p2y[i]  = (m21[i] * v1[i] + m22[i] * v2[i]) * y[i]
-	end
-	Lp.∇!(Lp.∇y, (p1y, p2y)) # (p1y,p2y) ≡  pxⁱ⋅yx ⟹  Lp.∇y ≡ ∇ⁱ⋅pxⁱ⋅yx
-	@avx @. ẏ =  Lp.∇y[1] + Lp.∇y[2]  # sumᵢ ∇ⁱ⋅pxⁱ⋅yx
+	
+	setMp!(Lp.mm, Lp.p, Lp.∂v, Lp.v, t)
+	@avx Lp.p[1] .*= y
+	@avx Lp.p[2] .*= y
+	div!(ẏ, Lp.∇y, Lp.p, Lp.∇!) # sumᵢ ∇ⁱ⋅pxⁱ⋅yx
+
 end
 
+
+
+# div method which takes args (p, ∇!)
+# --------------------------------------
+
+# m == 1
+function div!(
+	divp::A,         # output is put in here
+	∇p::NTuple{1,A}, # used for temp storage
+	p::NTuple{1,A},  
+	∇!::Tg, 
+) where {Tg, d, Tf, A<:Array{Tf,d}}
+
+	∇!(∇p, p) 
+	@avx @. divp =  ∇p[1]
+
+end
+
+# m == 2
+function div!(
+	divp::A,         # output is put in here
+	∇p::NTuple{2,A}, # used for temp storage
+	p::NTuple{2,A},  
+	∇!::Tg, 
+) where {Tg, d, Tf, A<:Array{Tf,d}}
+
+	∇!(∇p, p) 
+	@avx @. divp =  ∇p[1] + ∇p[2] 
+
+end

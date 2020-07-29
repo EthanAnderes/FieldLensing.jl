@@ -248,6 +248,13 @@ function (∇!::Nabla!{Tθ,Tφ})(∇y::NTuple{2,A}, y::A) where {Tθ,Tφ,Tf,A<:A
     ∇y
 end
 
+
+function (∇!::Nabla!{Tθ,Tφ})(∇y::NTuple{2,A}, y::NTuple{2,A}) where {Tθ,Tφ,Tf,A<:Array{Tf,2}}
+    mul!(∇y[1], ∇!.∂θ, y[1])
+    mul!(∇y[2], y[2], ∇!.∂φᵀ)
+    ∇y
+end
+
 # belt displacement field
 
 ### The following leads to some systematics at the edges
@@ -288,8 +295,9 @@ lenTbelt |> matshow; colorbar();
 #-
 (Tbelt′ .- Tbelt) |> matshow; colorbar(); 
 
-
-
+#-
+@time lenᴴTbelt = L' * Tbelt
+lenᴴTbelt |> matshow; colorbar(); 
 
 
 # Full sphere with Xlense
