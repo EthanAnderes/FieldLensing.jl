@@ -62,8 +62,8 @@ end
 
 # (m==1). Note: overwrites ẏ
 function (Lp::ArrayLenseᴴPlan{1,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}
-
-	setMp!(Lp.mm, Lp.p, Lp.∂v, Lp.v, t)
+	set1M!(Lp.mm[1,1], t, Lp.∂v[1,1])
+	set1p!(Lp.p[1], Lp.mm[1,1], Lp.v[1])
 	@avx Lp.p[1] .*= y
 	div!(ẏ, Lp.∇y, Lp.p, Lp.∇!) # sumᵢ ∇ⁱ⋅pxⁱ⋅yx
 
@@ -72,7 +72,17 @@ end
 # (m==2). Note: overwrites ẏ
 function (Lp::ArrayLenseᴴPlan{2,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}		
 	
-	setMp!(Lp.mm, Lp.p, Lp.∂v, Lp.v, t)
+	set2M!(
+		Lp.mm[1,1],  Lp.mm[2,1],  Lp.mm[1,2],  Lp.mm[2,2], 
+		t, 
+		Lp.∂v[1,1], Lp.∂v[2,1], Lp.∂v[1,2], Lp.∂v[2,2]
+	)
+	set2p!(
+		Lp.p[1], Lp.p[2], 
+		Lp.mm[1,1],  Lp.mm[2,1],  Lp.mm[1,2],  Lp.mm[2,2], 
+		Lp.v[1], Lp.v[2]
+	)
+
 	@avx Lp.p[1] .*= y
 	@avx Lp.p[2] .*= y
 	div!(ẏ, Lp.∇y, Lp.p, Lp.∇!) # sumᵢ ∇ⁱ⋅pxⁱ⋅yx
