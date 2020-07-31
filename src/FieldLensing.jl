@@ -59,6 +59,7 @@ export ArrayLense, ArrayLenseᴴ
 
 include("array_lense/array_lense.jl")
 include("array_lense/adjoint_array_lense.jl")
+include("array_lense/gradient.jl")
 
 # Xlense and AdjointXlense
 export Xlense, AdjointXlense

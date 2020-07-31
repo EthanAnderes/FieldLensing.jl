@@ -62,10 +62,12 @@ end
 
 # (m==1). Note: overwrites ẏ
 function (Lp::ArrayLenseᴴPlan{1,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}
+
 	set1M!(Lp.mm[1,1], t, Lp.∂v[1,1])
 	set1p!(Lp.p[1], Lp.mm[1,1], Lp.v[1])
 	@avx Lp.p[1] .*= y
-	div!(ẏ, Lp.∇y, Lp.p, Lp.∇!) # sumᵢ ∇ⁱ⋅pxⁱ⋅yx
+	Lp.∇!(Lp.∇y, Lp.p) # stored in Lp.∇y
+	@avx @. ẏ =  Lp.∇y[1] # sumᵢ ∇ⁱ⋅pxⁱ⋅yx
 
 end
 
@@ -82,40 +84,11 @@ function (Lp::ArrayLenseᴴPlan{2,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,
 		Lp.mm[1,1],  Lp.mm[2,1],  Lp.mm[1,2],  Lp.mm[2,2], 
 		Lp.v[1], Lp.v[2]
 	)
-
 	@avx Lp.p[1] .*= y
 	@avx Lp.p[2] .*= y
-	div!(ẏ, Lp.∇y, Lp.p, Lp.∇!) # sumᵢ ∇ⁱ⋅pxⁱ⋅yx
+	Lp.∇!(Lp.∇y, Lp.p) # stored in Lp.∇y
+	@avx @. ẏ =  Lp.∇y[1] + Lp.∇y[2] # sumᵢ ∇ⁱ⋅pxⁱ⋅yx
 
 end
 
 
-
-# div method which takes args (p, ∇!)
-# --------------------------------------
-
-# m == 1
-function div!(
-	divp::A,         # output is put in here
-	∇p::NTuple{1,A}, # used for temp storage
-	p::NTuple{1,A},  
-	∇!::Tg, 
-) where {Tg, d, Tf, A<:Array{Tf,d}}
-
-	∇!(∇p, p) 
-	@avx @. divp =  ∇p[1]
-
-end
-
-# m == 2
-function div!(
-	divp::A,         # output is put in here
-	∇p::NTuple{2,A}, # used for temp storage
-	p::NTuple{2,A},  
-	∇!::Tg, 
-) where {Tg, d, Tf, A<:Array{Tf,d}}
-
-	∇!(∇p, p) 
-	@avx @. divp =  ∇p[1] + ∇p[2] 
-
-end
