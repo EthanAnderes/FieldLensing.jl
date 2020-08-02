@@ -113,7 +113,7 @@ end;
 
 
 
-# ------------------------
+#= ------------------------
 L  = FieldLensing.ArrayLense(v, ∇!, 0, 1, 16)
 Lᴴ = L'
 
@@ -142,7 +142,7 @@ T .- L⁻ᴴLᴴT	|> matshow; colorbar();
 @benchmark $L * $T   # 35.966 ms (0.00% GC), 256x256, 16 steps, Float64
 @benchmark $Lᴴ * $T  #
 
-
+=#
 
 # Test transpose delta lense 
 # --------------------------
@@ -156,22 +156,25 @@ f   = LT
 τf  = LT .- T
 τv  = (0 .* v[1], 0 .* v[2])
 
-#-
-ẏ = cat(f, τf, τv...; dims = 3)
-y = cat(f, τf, τv...; dims = 3)
-pτL! = FieldLensing.plan(τL) 
-@code_warntype pτL!(ẏ, 1, y)
-@benchmark ($pτL!)($(ẏ), 1, $y) # 1.8 ms (0.00% GC), 256x256, Float64
-
 
 #-
 @code_warntype τL(f, τf, τv)
 @benchmark $τL($f, $τf, $τv)
-##  minimum time:  155.916 ms , 256x256, Float64
+##  minimum time:  125.916 ms , 256x256, Float64
+
+
+#-
+pτL! = FieldLensing.plan(τL) 
+# ẏ = cat(f, τf, τv...; dims = 3)
+# y = cat(f, τf, τv...; dims = 3)
+ẏ = tuple(f, τf, τv...)
+y = tuple(f, τf, τv...)
+@code_warntype pτL!(ẏ, 1, y)
+@benchmark ($pτL!)($(ẏ), 1, $y) # 1.5 ms (0.00% GC), 256x256, Float64
 
 
 f_out, τf_out, τv_out = τL(f, τf, τv)
-
+rtn = FieldLensing.odesolve_RK4_tup(pτL!, tuple(f, τf, τv...), τL.t₀, τL.t₁, τL.nsteps)
 
 τv_out[1] |> matshow; colorbar()
 v[1] |> matshow; colorbar()

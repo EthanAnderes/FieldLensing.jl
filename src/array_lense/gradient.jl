@@ -1,14 +1,13 @@
-# Transpose delta flow for computing the gradient with respect to the displacement field
-
 
 # τ Array lensing
 # ===============================================
+# Transpose delta flow for computing the gradient with respect to the displacement field
 # d is the dimension of the Xfield storage 
 # m is the intrinsic dimension of the field (i.e ndims(∇))
 
 # Note that ∇! is an object that works via
 #  ∇!(∇y::NTuple{m,A}, y::A) where {Tf,d, A<:Array{Tf,d}}
-
+# also need ∇!(∇y::NTuple{m,A}, y::NTuple{m,A})
 
 # τL = τArrayLense(v, ∇!, t₀, t₁, nsteps)
 # τL(f::A, δf::A, δv::NTuple{m,A}) -> (f, τf, τv)
@@ -27,15 +26,9 @@ struct τArrayLense{m,Tf,d,Tg,Tt<:Real} # <: AbstractFlow{XFields.Id{Tf,d},Tf,Tf
 end
 
 function (τL::τArrayLense{m,Tf,d,Tg,Tt})(f::A, τf::A, τv::NTuple{m,A}) where {m,Tf,d,Tg,Tt<:Real,A<:Array{Tf,d}}
-	# pack f, τf, τv into Array{Tf,d+1}
-	fτfτv  = cat(f, τf, τv...; dims = d+1)::Array{Tf,d+1}
-	pτL!   = plan(τL) 
-	fτfτv′ = odesolve_RK4(pτL!, fτfτv, τL.t₀, τL.t₁, τL.nsteps)
-	# unpack
-	rtn_f  = A(selectdim(fτfτv′, d+1, 1))
-	rtn_τf = A(selectdim(fτfτv′, d+1, 2))
-	rtn_τv = tuple((A(selectdim(fτfτv′, d+1, i+2)) for i = Base.OneTo(m))...)
-	return rtn_f, rtn_τf, rtn_τv
+	pτL!  = plan(τL) 
+	rtn   = odesolve_RK4_tup(pτL!, tuple(f, τf, τv...), τL.t₀, τL.t₁, τL.nsteps)
+	return rtn[1], rtn[2], tuple(rtn[3:end]...)
 end
 
 function Base.inv(L::τArrayLense{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
@@ -51,8 +44,8 @@ struct τArrayLensePlan{m,Tf,d,Tg,Tt<:Real}
 	mm::Matrix{Array{Tf,d}}    
 	p::NTuple{m,Array{Tf,d}}    
 	w::NTuple{m,Array{Tf,d}}    
-	∇y::NTuple{m,Array{Tf,d}}   # for storage 
-	∇x::NTuple{m,Array{Tf,d}}   # for storage  
+	∇y::NTuple{m,Array{Tf,d}} # for storage 
+	∇x::NTuple{m,Array{Tf,d}} # for storage  
 end
 
 function plan(L::τArrayLense{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
@@ -68,17 +61,11 @@ function plan(L::τArrayLense{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
 	τArrayLensePlan{m,Tf,d,Tg,Tt}(L.v, L.∇!, ∂v, mm, p, w, ∇y, ∇x)
 end
 
-# m is the dimension of the space, gives NTuple length
-# d is the storage dimension of a single field or vector field coordinate 
-# d′ = d + 1, used to stack all fields into an Array for use by ode_solvers
-function (τLp::τArrayLensePlan{2,Tf,d})(
-		ẏ::A, # adding an extra dimension to hold everything
-		t::Real, 
-		y::A
-	) where {Tf,d′,d, A<:Array{Tf,d′}, Trn<:Transform{Tf,d}}		
+# m == 2 case ...
+function (τLp::τArrayLensePlan{2,Tf,d})(ẏ, t, y) where {Tf,d}
 
-	@assert d′ == d + 1
-
+	# we need updated M and p for current time t
+	# --------------------------
 	set2M!(
 		τLp.mm[1,1],  τLp.mm[2,1],  τLp.mm[1,2],  τLp.mm[2,2], 
 		t, 
@@ -90,38 +77,32 @@ function (τLp::τArrayLensePlan{2,Tf,d})(
 		τLp.v[1], τLp.v[2]
 	)
 
-	# unpack input arrays
+	# unpack input
 	# --------------------------
-	# FIXME: how to get type inference here?
-	S  = SubArray{Tf,2,A}
-	f, τf    = selectdim(y, d′, 1)::S, selectdim(y, d′, 2)::S
-	ḟ, τ̇f    = selectdim(ẏ, d′, 1)::S, selectdim(ẏ, d′, 2)::S
-	τv1, τv2 = selectdim(y, d′, 3)::S, selectdim(y, d′, 4)::S
-	τ̇v1, τ̇v2 = selectdim(ẏ, d′, 3)::S, selectdim(ẏ, d′, 4)::S
+	f, τf, τv1, τv2 = y[1], y[2], y[3], y[4]
+	ḟ, τ̇f, τ̇v1, τ̇v2 = ẏ[1], ẏ[2], ẏ[3], ẏ[4]
 
 	# fill τ̇f (use τLp.∇y for storage)
 	# --------------------------
 	@avx @. τLp.∇x[1] = τLp.p[1] * τf
 	@avx @. τLp.∇x[2] = τLp.p[2] * τf
-	τLp.∇!(τLp.∇y, τLp.∇x) # stored in τLp.∇y
+	τLp.∇!(τLp.∇y, τLp.∇x)  
 	@avx @. τ̇f =  τLp.∇y[1] + τLp.∇y[2] 
 	
 	# fill ḟ (save ∇f in τLp.∇y for storage)
 	# --------------------------
-	
 	τLp.∇!(τLp.∇y, f)  
 	@avx @. ḟ =  τLp.p[1] * τLp.∇y[1] + τLp.p[2] * τLp.∇y[2] # pxⁱ⋅ ∇ⁱ ⋅ yx
 
-
 	# fill τ̇v (use ∇f stored in τLp.∇y)
 	# --------------------------
-
 	# compute w by hijacking p constructor 
 	set2p!(
 		τLp.w[1], τLp.w[2], 
 		τLp.mm[1,1],  τLp.mm[1,2], τLp.mm[2,1], τLp.mm[2,2], #<- note the mm transpose
 		τLp.∇y[1], τLp.∇y[2] # currently holding ∇f
 	)
+
 	# compute w, then multiply by - τf (still store in w)
 	@avx @. τLp.w[1] *= - τf
 	@avx @. τLp.w[2] *= - τf
@@ -145,6 +126,5 @@ function (τLp::τArrayLensePlan{2,Tf,d})(
 	@avx @. τLp.∇x[2] = τLp.w[2] * τLp.p[2]	
  	τLp.∇!(τLp.∇y, τLp.∇x)
 	@avx @. τ̇v2 += τLp.∇y[1] + τLp.∇y[2] 
-
 
 end
