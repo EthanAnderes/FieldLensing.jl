@@ -139,16 +139,12 @@ function (τLp::τArrayLensePlan{2,Tf,d})(
 	@avx @. τLp.∇x[1] = τLp.w[1] * τLp.p[1]
 	@avx @. τLp.∇x[2] = τLp.w[2] * τLp.p[1]
 	τLp.∇!(τLp.∇y, τLp.∇x)
-	@avx @. τ̇v1 += τLp.∇y[1] 
-	@avx @. τ̇v1 += τLp.∇y[2] 
+	@avx @. τ̇v1 += τLp.∇y[1] + τLp.∇y[2]  
 
 	@avx @. τLp.∇x[1] = τLp.w[1] * τLp.p[2]
 	@avx @. τLp.∇x[2] = τLp.w[2] * τLp.p[2]	
  	τLp.∇!(τLp.∇y, τLp.∇x)
-	@avx @. τ̇v2 += τLp.∇y[1] 
-	@avx @. τ̇v2 += τLp.∇y[2] 
+	@avx @. τ̇v2 += τLp.∇y[1] + τLp.∇y[2] 
+
 
 end
-
-
-

@@ -52,8 +52,7 @@ function (𝕁!::Jacobian!{Tθ,Tφ})(y::NTuple{2,A}) where {Tθ,Tφ,Tf,A<:Array{
 end
 
 # -----------------------------------------------
-## trm, ∇!, 𝕁! = @sblock let Δθ′ = 2.5, Δφ′ = 1.0, nθ = 4*512, nφ = 5*512 - 1
-trm, ∇!, 𝕁! = @sblock let Δθ′ = 2.5, Δφ′ = 1.0, nθ = 256, nφ = 256
+trm, ∇!, 𝕁! = @sblock let Δθ′ = 3.5, Δφ′ = 3.5, nθ = 256, nφ = 256
 	## 𝕨      = r𝕎32(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
 	𝕨      = r𝕎(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
 	trm    = ordinary_scale(𝕨)*𝕨
@@ -83,19 +82,33 @@ end
 
 
 # ------------------------
-v, t = @sblock let trm, ∇!, scale_lense = 1.25
+function whitemap(trm::T) where T<:Transform
+    zx = randn(eltype_in(trm),size_in(trm))
+    Xmap(trm, zx ./ √Ωx(trm))
+end
+
+
+Ct, Cϕ, Cn = @sblock let trm, scale_lense = 1.25, μKarcminT = 10
 	l   = wavenum(trm)
+    
     cTl = Spectra.cTl_besselj_approx.(l)
 	cϕl = Spectra.cϕl_approx.(l) 
+    cnl = deg2rad(μKarcminT/60)^2  .+ 0 .* l
 
 	Ct  = DiagOp(Xfourier(trm, cTl)) 
-	Cϕ  = scale_lense * DiagOp(Xfourier(trm, cϕl)) 
+    Cϕ  = scale_lense * DiagOp(Xfourier(trm, cϕl)) 
+	Cn  = DiagOp(Xfourier(trm, cnl)) 
 
-	ϕ = √Cϕ * Xmap(trm, randn(eltype_in(trm),size_in(trm)) ./ sqrt.(Ωx(trm)))
-	v = ∇!(ϕ[:])   	
-	t = √Ct * Xmap(trm, randn(eltype_in(trm),size_in(trm)) ./ sqrt.(Ωx(trm)))
+    Ct, Cϕ, Cn
+end;
 
-	v, t
+
+t, n, ϕ, v = @sblock let trm, ∇!, Ct, Cϕ, Cn
+    t = √Ct * whitemap(trm)
+    n = √Cn * whitemap(trm)
+    ϕ = √Cϕ * whitemap(trm)
+    v = ∇!(ϕ[:])    
+    t, n, ϕ, v
 end;
 
 
@@ -182,24 +195,68 @@ f     |> matshow; colorbar()
 ## # Test some different ways to compute (∂(x+tv(x))/∂x) \ v
 ## # --------------------------
 
+t, n, ϕ, v = @sblock let trm, ∇!, Ct, Cϕ, Cn
+    t = √Ct * whitemap(trm)
+    n = √Cn * whitemap(trm)
+    ϕ = √Cϕ * whitemap(trm)
+    v = ∇!(ϕ[:])    
+    t, n, ϕ, v
+end;
+
+Lv = FieldLensing.ArrayLense(v, ∇!, 0, 1, 16)
+d = Lv * t + n
+
+#-
+v0       = (v[1] .* 0, v[2] .* 0)
+vcurr    = (v[1] .* 0.0, v[2] .* 0.0)
+Lvcurr   = FieldLensing.ArrayLense(vcurr, ∇!, 0, 1, 16)
+Lvcurr_t = Lvcurr * t
+curr_t   = t
+
+τL10 = FieldLensing.τArrayLense(vcurr, ∇!, 1, 0, 16)
+τL01 = FieldLensing.τArrayLense(vcurr, ∇!, 0, 1, 16)
+
+#-
+τf, τv = τL10(Lvcurr_t[:], (Cn \ (d - Lvcurr_t))[:], v0)[2:3]
+τf    .-= (Ct \ curr_t)[:] 
+# τv[1] .-= (Cϕ \ Xmap(trm,vcurr[1]))[:] 
+# τv[2] .-= (Cϕ \ Xmap(trm,vcurr[2]))[:]
+τv = τL01(curr_t[:], τf, τv)[3]
+
+(Cϕ * Xmap(trm, ∇!(τv[1])[1] + ∇!(τv[2])[2]))[:] |> matshow
+(Xmap(trm, ∇!(v[1])[1] +  ∇!(v[2])[2]))[:] |> matshow
+
+
+(√Cϕ * Xmap(trm,τv[1]))[:] |> matshow
+v[1]  |> matshow
+
+(√Cϕ * Xmap(trm,τv[2]))[:] |> matshow
+v[2]  |> matshow
+
+
+(Cϕ * Xmap(trm,τv[1] .+ τv[2]))[:] |> matshow
+v[1] .+ v[2] |> matshow
+
+
+
 
 #TODO: set up the following for a very basic test of the transpose delta flow.
 
 
-        # -------- ∇mϕ
-        ∇logPp, ∇logPϕ = δᵀ_Flowϕ_local(
-            lnp,  ϕ,                               # parameterize the lense path (f,ϕ)
-            𝔸ᵀ(ncl \ (dp - 𝔸(lnp))),  zero(ϕ),     # operated on (δf,δϕ)
-            1, 0, ode_steps
-        )
-        ∇logPp -= ((Cfs + ccurr.r * unit_Cft) \ p) 
-        ∇logPϕ -= inv(ccurr.Aϕ) * (invΣϕ_unit * ϕ)
-        ∇ϕ = δᵀ_Flowϕ_local(
-            𝔻r * p,      ϕ,        # parameterize the lense path (f,ϕ)
-            𝔻r \ ∇logPp, ∇logPϕ,   # operated on (δf,δϕ)
-            0, 1, ode_steps
-        )[2]
-        ∇mϕ = grad_mult * (𝔾Aϕ \ ∇ϕ)
+        # # -------- ∇mϕ
+        # ∇logPp, ∇logPϕ = δᵀ_Flowϕ_local(
+        #     lnp,  ϕ,                               # parameterize the lense path (f,ϕ)
+        #     𝔸ᵀ(ncl \ (dp - 𝔸(lnp))),  zero(ϕ),     # operated on (δf,δϕ)
+        #     1, 0, ode_steps
+        # )
+        # ∇logPp -= ((Cfs + ccurr.r * unit_Cft) \ p) 
+        # ∇logPϕ -= inv(ccurr.Aϕ) * (invΣϕ_unit * ϕ)
+        # ∇ϕ = δᵀ_Flowϕ_local(
+        #     𝔻r * p,      ϕ,        # parameterize the lense path (f,ϕ)
+        #     𝔻r \ ∇logPp, ∇logPϕ,   # operated on (δf,δϕ)
+        #     0, 1, ode_steps
+        # )[2]
+        # ∇mϕ = grad_mult * (𝔾Aϕ \ ∇ϕ)
 
 
 

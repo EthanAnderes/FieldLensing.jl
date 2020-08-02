@@ -16,6 +16,29 @@ function odesolve_RK4(f!, y₀, t₀, t₁, nsteps)
     return y
 end
 
+# RK 4 rule on tuples of fields
+function odesolve_RK4_tup(f!, y₀::NTuple{m}, t₀, t₁, nsteps) where {m}
+    h, h½, h⅙ = (t₁-t₀)/nsteps ./ (1,2,6)
+    y, y′  = deepcopy(y₀), map(similar,y₀)
+    v₁, v₂ = map(similar,y₀), map(similar,y₀)
+    v₃, v₄ = map(similar,y₀), map(similar,y₀)
+    for t in range(t₀,t₁,length=nsteps+1)[1:end-1]
+        f!(v₁, t, y)
+
+        for i=1:m (@. y′[i] = y[i] + h½*v₁[i]) end
+        f!(v₂, t + h½, y′)
+
+        for i=1:m (@. y′[i] = y[i] + h½*v₂[i]) end
+        f!(v₃, t + h½, y′)
+
+        for i=1:m (@. y′[i] = y[i] + h*v₃[i]) end
+        f!(v₄, t + h, y′)
+        
+        for i=1:m (@. y[i] += h*(v₁[i] + 2v₂[i] + 2v₃[i] + v₄[i])/6) end
+    end
+    return y
+end
+
 # RK 3/8 rule
 function odesolve_RK38(f!, y₀, t₀, t₁, nsteps)
     ϵ = (t₁-t₀)/nsteps
@@ -32,5 +55,4 @@ function odesolve_RK38(f!, y₀, t₀, t₁, nsteps)
     end
     return y
 end
-
 
