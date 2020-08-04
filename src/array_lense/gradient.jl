@@ -2,18 +2,17 @@
 # τ Array lensing
 # ===============================================
 # Transpose delta flow for computing the gradient with respect to the displacement field
-# d is the dimension of the Xfield storage 
-# m is the intrinsic dimension of the field (i.e ndims(∇))
 
 # Note that ∇! is an object that works via
 #  ∇!(∇y::NTuple{m,A}, y::A) where {Tf,d, A<:Array{Tf,d}}
 # also need ∇!(∇y::NTuple{m,A}, y::NTuple{m,A})
 
-# τL = τArrayLense(f, v, ∇!, t₀, t₁, nsteps)
-# τL(δf::NTuple{n,A}, δv::NTuple{m,A}) -> (τf, τv)
- # n is the number of fields that gets lensed by the same v
- # m is the intrinsic dimension of the space
- # d is the Array dimension that forms the storage container for the fields f 
+# τL = τArrayLense(v, f, ∇!, t₀, t₁, nsteps)
+# τL(δv::NTuple{m,A}, δf::NTuple{n,A}) -> (τv, τf)
+# n is the number of fields that gets lensed by the same v
+# m is the intrinsic dimension of the space
+# d is the Array dimension that forms the storage container for the fields f 
+
 # τArrayLense 
 # --------------------------------
 struct τArrayLense{m,n,Tf,d,Tg,Tt<:Real} 
@@ -33,11 +32,13 @@ end
 # --------------------------------
 
 function (τL::τArrayLense{m,n,Tf,d,Tg,Tt})(
-	τv::NTuple{m,A}, τf::NTuple{n,A}
-)::Tuple{NTuple{m,A}, NTuple{n,A}} where {m,n,Tf,d,Tg,Tt<:Real,A<:Array{Tf,d}}
+		τv::NTuple{m,A}, τf::NTuple{n,A}
+	)::Tuple{NTuple{m,A}, NTuple{n,A}} where {m,n,Tf,d,Tg,Tt<:Real,A<:Array{Tf,d}}
+	
 	pτL!  = plan(τL) 
 	rtn   = odesolve_RK4(pτL!, tuple(τv..., τf..., τL.f...), τL.t₀, τL.t₁, τL.nsteps)
 	return tuple(rtn[Base.OneTo(m)]...), tuple(rtn[(m+1):(m+n)]...)
+
 end
 
 function Base.:*(τL::τArrayLense{m,n,Tf,d}, τvτf::Tuple{NTuple{m,A}, NTuple{n,A}}) where {m,n,Tf,d,A<:Array{Tf,d}}
@@ -48,8 +49,6 @@ function Base.:\(τL::τArrayLense{m,n,Tf,d}, τvτf::Tuple{NTuple{m,A}, NTuple{
 	invτL = inv(τL)
 	invτL(τvτf[1], τvτf[2])
 end
-
-# TODO: extend the functionality to Fields ...
 
 
 # inv τArrayLense, need to move τL.f from time t₀ to time t₁
@@ -112,13 +111,13 @@ function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 	# --------------------------
 	m = 2
 	τv, τ̇v = y[1:m], ẏ[1:m]
-	τf, τ̇f = y[(m+1):(m+n)], ẏ[(m+1):(m+n)]
+	τf, τ̇f = y[(m+1):(m+n)], 	ẏ[(m+1):(m+n)]
 	f,   ḟ = y[(m+n+1):(m+2n)], ẏ[(m+n+1):(m+2n)]
 
 	for i = 1:n
 		fillḟ!_fillτ̇f!_add2τ̇v!(
 			ḟ[i], τ̇f[i], τ̇v, 
-			f[i], τf[i], τv, 
+			f[i], τf[i], # τv, not used
 			t, τLp
 		)
 	end
@@ -128,7 +127,7 @@ end
 
 function fillḟ!_fillτ̇f!_add2τ̇v!(
 		ḟ::A, τ̇f::A, τ̇v::NTuple{2,A}, 
-		f::A, τf::A, τv::NTuple{2,A}, 
+		f::A, τf::A, # τv::NTuple{2,A}, not used 
 		t, τLp::τArrayLensePlan{2}
 	) where {A}
 

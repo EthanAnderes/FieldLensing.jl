@@ -77,7 +77,7 @@ LinearAlgebra.dot(f::Xfield,g::Xfield) = Ωx(fieldtransform(f)) * dot(f[:],g[:])
 
 # set the transform and the gradient operator 
 # -----------------------------------------------
-trm, ∇! = @sblock let Δθ′ = 2.5, Δφ′ = 2.5, nθ = 256, nφ = 256
+trm, ∇! = @sblock let Δθ′ = 2.5, Δφ′ = 2.5, nθ = 512, nφ = 512
 	## 𝕨      = r𝕎32(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
 	𝕨      = r𝕎(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
 	trm    = ordinary_scale(𝕨)*𝕨
@@ -109,7 +109,7 @@ end
 Cn, Ct, Cϕ, Cω, ΔCϕΔᴴ, ΔCωΔᴴ, Δ, Cv1, Cv2, Cv1v2 = @sblock let trm
 	l   = wavenum(trm)
     
-    μKarcminT = 10
+    μKarcminT = 5
     cnl = deg2rad(μKarcminT/60)^2  .+ 0 .* l
 	Cn  = DiagOp(Xfourier(trm, cnl)) 
 
@@ -121,7 +121,7 @@ Cn, Ct, Cϕ, Cω, ΔCϕΔᴴ, ΔCωΔᴴ, Δ, Cv1, Cv2, Cv1v2 = @sblock let trm
     Cϕ      = DiagOp(Xfourier(trm, cϕl))
     ΔCϕΔᴴ   = DiagOp(Xfourier(trm, l.^4 .* cϕl)) 
 
-    scale_ω = 0.01
+    scale_ω = 0.5
     cωl     = scale_ω .* Spectra.cϕl_approx.(l) 
     Cω      = DiagOp(Xfourier(trm, cωl)) 
     ΔCωΔᴴ   = DiagOp(Xfourier(trm, l.^4 .* cωl))
@@ -176,7 +176,6 @@ end
     (∇vll1[1] .+ ∇vll2[2], ∇vll1[2] .- ∇vll2[1])
 end
 
-
 #-
 
 n, t, Len, v, vϕ, vω, ϕ, ω = @sblock let trm, ∇!, Cn, Ct, Cϕ, Cω
@@ -184,7 +183,7 @@ n, t, Len, v, vϕ, vω, ϕ, ω = @sblock let trm, ∇!, Cn, Ct, Cϕ, Cω
     n = √Cn * whitemap(trm)
     ϕ = √Cϕ * whitemap(trm)
     ω = √Cω * whitemap(trm)
-    ω = 0 * ω
+    ### ω = 0 * ω!!!!! 
     vϕ = ∇!(ϕ[:])    
     vω = ∇!(ω[:]) |> x->(x[2], .-x[1])
     v  = (vϕ[1] + vω[1], vϕ[2] + vω[2])     
