@@ -9,35 +9,63 @@
 #  ∇!(∇y::NTuple{m,A}, y::A) where {Tf,d, A<:Array{Tf,d}}
 # also need ∇!(∇y::NTuple{m,A}, y::NTuple{m,A})
 
-# τL = τArrayLense(v, ∇!, t₀, t₁, nsteps)
-# τL(f::A, δf::A, δv::NTuple{m,A}) -> (f, τf, τv)
-
+# τL = τArrayLense(f, v, ∇!, t₀, t₁, nsteps)
+# τL(δf::NTuple{n,A}, δv::NTuple{m,A}) -> (τf, τv)
+ # n is the number of fields that gets lensed by the same v
+ # m is the intrinsic dimension of the space
+ # d is the Array dimension that forms the storage container for the fields f 
 # τArrayLense 
 # --------------------------------
-struct τArrayLense{m,Tf,d,Tg,Tt<:Real} # <: AbstractFlow{XFields.Id{Tf,d},Tf,Tf,d}
+struct τArrayLense{m,n,Tf,d,Tg,Tt<:Real} 
 	v::NTuple{m,Array{Tf,d}}
+	f::NTuple{n,Array{Tf,d}} # defined at t₀
 	∇!::Tg  
 	t₀::Tt
 	t₁::Tt
 	nsteps::Int
-	function τArrayLense(v::NTuple{m,Array{Tf,d}}, ∇!::Tg, t₀::Tt, t₁::Tt, nsteps::Int) where {m,Tf,d,Tg,Tt<:Real}
-		new{m,Tf,d,Tg,Tt}(v, ∇!, t₀, t₁, nsteps)
+	function τArrayLense(v::NTuple{m,A}, f::NTuple{n,A}, ∇!::Tg, t₀::Tt, t₁::Tt, nsteps::Int) where {m,n,Tf,d,A<:Array{Tf,d},Tg,Tt<:Real}
+		new{m,n,Tf,d,Tg,Tt}(v, f, ∇!, t₀, t₁, nsteps)
 	end
 end
 
-function (τL::τArrayLense{m,Tf,d,Tg,Tt})(f::A, τf::A, τv::NTuple{m,A}) where {m,Tf,d,Tg,Tt<:Real,A<:Array{Tf,d}}
-	pτL!  = plan(τL) 
-	rtn   = odesolve_RK4_tup(pτL!, tuple(f, τf, τv...), τL.t₀, τL.t₁, τL.nsteps)
-	return rtn[1], rtn[2], tuple(rtn[3:end]...)
-end
 
-function Base.inv(L::τArrayLense{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
-	τArrayLense(L.v, L.∇!, L.t₁, L.t₀, L.nsteps)
-end
-
-# τArrayLensePlan
+# τArrayLense operating on (τf, τv)
 # --------------------------------
-struct τArrayLensePlan{m,Tf,d,Tg,Tt<:Real}
+
+function (τL::τArrayLense{m,n,Tf,d,Tg,Tt})(τv::NTuple{m,A}, τf::NTuple{n,A}) where {m,n,Tf,d,Tg,Tt<:Real,A<:Array{Tf,d}}
+	pτL!  = plan(τL) 
+	rtn   = odesolve_RK4(pτL!, tuple(τv..., τf..., τL.f...), τL.t₀, τL.t₁, τL.nsteps)
+	return tuple(rtn[1:m]...), tuple(rtn[(m+1):(m+n)]...)
+end
+
+function Base.:*(τL::τArrayLense{m,n,Tf,d}, τvτf::Tuple{NTuple{m,A}, NTuple{n,A}}) where {m,n,Tf,d,A<:Array{Tf,d}}
+	τL(τvτf[1], τvτf[2])
+end
+
+function Base.:\(τL::τArrayLense{m,n,Tf,d}, τvτf::Tuple{NTuple{m,A}, NTuple{n,A}}) where {m,n,Tf,d,A<:Array{Tf,d}}
+	invτL = inv(τL)
+	invτL(τvτf[1], τvτf[2])
+end
+
+# function (τL::τArrayLense{1,m,Tf,d,Tg,Tt})(τf::A, τv::NTuple{m,A}) where {m,Tf,d,Tg,Tt<:Real,A<:Array{Tf,d}}
+# 	τL((τf,), τv)
+# end
+
+# TODO: extend the functionality to Fields ...
+
+
+# inv τArrayLense, need to move τL.f from time t₀ to time t₁
+# --------------------------------
+
+function Base.inv(τL::τArrayLense{m,n,Tf,d,Tg,Tt}) where {m,n,Tf,d,Tg,Tt<:Real}
+	L = ArrayLense(τL.v, τL.∇!, τL.t₀, τL.t₁, τL.nsteps)
+	ft₁ = map(f -> flow(L,f), τL.f)
+	τArrayLense(τL.v, ft₁, τL.∇!, τL.t₁, τL.t₀, τL.nsteps)
+end
+
+# τArrayLensePlan (note: the Plan doesn't hold the tuple of fields but it knows how many there are)
+# --------------------------------
+struct τArrayLensePlan{m,n,Tf,d,Tg,Tt<:Real}
 	v::NTuple{m,Array{Tf,d}} 
 	∇!::Tg   
 	∂v::Matrix{Array{Tf,d}}    
@@ -48,7 +76,7 @@ struct τArrayLensePlan{m,Tf,d,Tg,Tt<:Real}
 	∇x::NTuple{m,Array{Tf,d}} # for storage  
 end
 
-function plan(L::τArrayLense{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
+function plan(L::τArrayLense{m,n,Tf,d,Tg,Tt}) where {m,n,Tf,d,Tg,Tt<:Real}
 	∂v = Array{Tf,d}[zeros(Tf,size(L.v[r])) for r=1:m, c=1:m]
 	for r = 1:m
 		L.∇!(tuple(∂v[r,:]...), L.v[r])
@@ -58,11 +86,13 @@ function plan(L::τArrayLense{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
 	w   = deepcopy(L.v)
 	∇y  = deepcopy(L.v)
 	∇x  = deepcopy(L.v)
-	τArrayLensePlan{m,Tf,d,Tg,Tt}(L.v, L.∇!, ∂v, mm, p, w, ∇y, ∇x)
+	τArrayLensePlan{m,n,Tf,d,Tg,Tt}(L.v, L.∇!, ∂v, mm, p, w, ∇y, ∇x)
 end
 
-# m == 2 case ...
-function (τLp::τArrayLensePlan{2,Tf,d})(ẏ, t, y) where {Tf,d}
+# TODO: extend to the n> 1 case ... perhaps just wrap in a for loop over f, τf?
+
+# m == 2, n==1 case ...
+function (τLp::τArrayLensePlan{2,1,Tf,d})(ẏ, t, y) where {Tf,d}
 
 	# we need updated M and p for current time t
 	# --------------------------
@@ -79,8 +109,9 @@ function (τLp::τArrayLensePlan{2,Tf,d})(ẏ, t, y) where {Tf,d}
 
 	# unpack input
 	# --------------------------
-	f, τf, τv1, τv2 = y[1], y[2], y[3], y[4]
-	ḟ, τ̇f, τ̇v1, τ̇v2 = ẏ[1], ẏ[2], ẏ[3], ẏ[4]
+	τv1, τv2, τf, f = y[1], y[2], y[3], y[4]
+	τ̇v1, τ̇v2, τ̇f, ḟ = ẏ[1], ẏ[2], ẏ[3], ẏ[4]
+
 
 	# fill τ̇f (use τLp.∇y for storage)
 	# --------------------------
@@ -128,3 +159,6 @@ function (τLp::τArrayLensePlan{2,Tf,d})(ẏ, t, y) where {Tf,d}
 	@avx @. τ̇v2 += τLp.∇y[1] + τLp.∇y[2] 
 
 end
+
+
+
