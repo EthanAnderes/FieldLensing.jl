@@ -116,12 +116,12 @@ Cn, Ct, Cϕ, Cω, ΔCϕΔᴴ, ΔCωΔᴴ, Δ, Cv1, Cv2, Cv1v2 = @sblock let trm
     cTl = Spectra.cTl_besselj_approx.(l)
 	Ct  = DiagOp(Xfourier(trm, cTl))
 
-    scale_ϕ = 1.25 
+    scale_ϕ = 1.5 
 	cϕl     = scale_ϕ .* Spectra.cϕl_approx.(l) 
     Cϕ      = DiagOp(Xfourier(trm, cϕl))
     ΔCϕΔᴴ   = DiagOp(Xfourier(trm, l.^4 .* cϕl)) 
 
-    scale_ω = 0.5
+    scale_ω = 0.1
     cωl     = scale_ω .* Spectra.cϕl_approx.(l) 
     Cω      = DiagOp(Xfourier(trm, cωl)) 
     ΔCωΔᴴ   = DiagOp(Xfourier(trm, l.^4 .* cωl))
@@ -196,32 +196,74 @@ end;
 
 d = Len(v) * t + n
 
+
+# Benchmark transpose delta lense 
+#= 
+L  = FieldLensing.ArrayLense(v, ∇!, 0, 1, 16)
+T  = t[:]
+LT = L  * T
+f  = LT
+τL   = FieldLensing.τArrayLense(v, (f,), ∇!, 1, 0, 16)
+τL′  = FieldLensing.τArrayLense(v, (f,f), ∇!, 1, 0, 16)
+
+τv  = (0 .* v[1], 0 .* v[2])
+τf  = (LT .- T,)
+τf′ = (LT .- T, LT .- T)
+
+@benchmark $τL * $((τv, τf))
+## 140ms 256x256, Float64 (8 threads)
+@benchmark $τL′ * $((τv, τf′))
+## 202ms 256x256, Float64 (8 threads)
+
+@code_warntype τL * (τv, τf)
+@code_warntype τL′ * (τv, τf′)
+
+@benchmark $L * $T
+## 35ms 256x256, Float64 (8 threads)
+
+#-
+pτL! = FieldLensing.plan(τL) 
+# ẏ = cat(f, τf, τv...; dims = 3)
+# y = cat(f, τf, τv...; dims = 3)
+ẏ = tuple(f, τf, τv...)
+y = tuple(f, τf, τv...)
+@code_warntype pτL!(ẏ, 1, y)
+@benchmark ($pτL!)($(ẏ), 1, $y) # 1.5 ms (0.00% GC), 256x256, Float64
+
+=#
+
+
+
+
+
+
 # set initial vcurr
 
 vcurr = map(zero, v)
 
 # update tcurr, vcurr
-for rtnn = 1:2
+for rtnn = 1:5
     global tcurr, vcurr
 
     tcurr, hcurr = pcg(
-        f -> (inv(Ct) + inv(Cn)) \ f, 
-        #f -> Ct * Cn / (Ct + Cn) * f, 
+        #f -> (inv(Ct) + inv(Cn)) \ f, 
+        f -> Ct * Cn / (Ct + Cn) * f, 
         f -> Len(vcurr)' * inv(Cn) * Len(vcurr) * f +  inv(Ct) * f,
-        Len(vcurr)' * inv(Cn) * (d + √Cn * whitemap(trm)) + inv(Ct^(1//2)) * whitemap(trm),
+        Len(vcurr)' * inv(Cn) * (d + √Cn * whitemap(trm)) + inv(Ct) * (√Ct * whitemap(trm)),
         nsteps = 50,
         rel_tol = 1e-20,
     )
+    Len_tcurr = Len(vcurr)*tcurr
     
     
     # Gradient update vcurr
     
     ## set transpose flow operators
     τL01 = FieldLensing.τArrayLense(vcurr, (tcurr[:],), ∇!, 0, 1, 16)
-    τL10  = inv(τL01)
+    τL10 = FieldLensing.τArrayLense(vcurr, (Len_tcurr[:],), ∇!, 1, 0, 16)
+    # τL10  = inv(τL01)
     
     ## initial transpose flow down to time 0
-    # Don't you need a prior term for this one ...?
     ∇logP1 = ((Cn\(d-Len(vcurr)*tcurr))[:],)
     τv0, τf0  = τL10 * (map(zero,vcurr), ∇logP1)
     
@@ -240,9 +282,8 @@ for rtnn = 1:2
     lower_lim=0.0
     inits=0.001 
     
-    invΛ∇vcurr = ( (Cv1*Xmap(trm,τv1[1]))[:], (Cv2*Xmap(trm,τv1[2]))[:] )
-    # invΛ∇vcurr = map(x->x[:], ninv∇logPv(Xmap(trm,τv1[1]), Xmap(trm,τv1[2])))
-    Len_tcurr = Len(vcurr)*tcurr
+    # invΛ∇vcurr = ( (Cv1*Xmap(trm,τv1[1]))[:], (Cv2*Xmap(trm,τv1[2]))[:] )
+    invΛ∇vcurr = map(x->x[:], ninv∇logPv(Xmap(trm,τv1[1]), Xmap(trm,τv1[2])))
     T = eltype_in(trm)
     opt = NLopt.Opt(solver, 1)
     opt.maxtime      = maxtime
@@ -263,6 +304,8 @@ for rtnn = 1:2
     )
 
 end
+
+
 
 #=
 v[1]     |> matshow; colorbar()
@@ -291,77 +334,6 @@ pdivv(v) |> matshow; colorbar()
 
 
 
-
-
-
-
-
-
-#-
-
-
-
-v0       = (v[1] .* 0, v[2] .* 0)
-vcurr    = (v[1] .* 0.0, v[2] .* 0.0)
-Lvcurr   = FieldLensing.ArrayLense(vcurr, ∇!, 0, 1, 16)
-Lvcurr_t = Lvcurr * t
-curr_t   = t
-
-τL10 = FieldLensing.τArrayLense(vcurr, ∇!, 1, 0, 16)
-τL01 = FieldLensing.τArrayLense(vcurr, ∇!, 0, 1, 16)
-
-#-
-τf, τv = τL10(Lvcurr_t[:], (Cn \ (d - Lvcurr_t))[:], v0)[2:3]
-τf    .-= (Ct \ curr_t)[:] 
-# τv[1] .-= (Cϕ \ Xmap(trm,vcurr[1]))[:] 
-# τv[2] .-= (Cϕ \ Xmap(trm,vcurr[2]))[:]
-τv = τL01(curr_t[:], τf, τv)[3]
-
-(Cϕ * Xmap(trm, ∇!(τv[1])[1] + ∇!(τv[2])[2]))[:] |> matshow
-(Xmap(trm, ∇!(v[1])[1] +  ∇!(v[2])[2]))[:] |> matshow
-
-
-(√Cϕ * Xmap(trm,τv[1]))[:] |> matshow
-v[1]  |> matshow
-
-(√Cϕ * Xmap(trm,τv[2]))[:] |> matshow
-v[2]  |> matshow
-
-
-(Cϕ * Xmap(trm,τv[1] .+ τv[2]))[:] |> matshow
-v[1] .+ v[2] |> matshow
-
-
-# Benchmark transpose delta lense 
-#= --------------------------
-L  = FieldLensing.ArrayLense(v, ∇!, 0, 1, 16)
-T  = t[:]
-LT = L  * T
-f  = LT
-τL   = FieldLensing.τArrayLense(v, (f,), ∇!, 1, 0, 16)
-τL′  = FieldLensing.τArrayLense(v, (f,f), ∇!, 1, 0, 16)
-
-τv  = (0 .* v[1], 0 .* v[2])
-τf  = (LT .- T,)
-τf′ = (LT .- T, LT .- T)
-
-@code_warntype τL * (τv, τf)
-@code_warntype τL′ * (τv, τf′)
-@benchmark $τL * $((τv, τf))
-##  minimum time:  125.916 ms , 256x256, Float64 (8 threads)
-@benchmark $τL′ * $((τv, τf′))
-## minimum time: 233.014 ms , 256x256, Float64 (8 threads)
-
-#-
-pτL! = FieldLensing.plan(τL) 
-# ẏ = cat(f, τf, τv...; dims = 3)
-# y = cat(f, τf, τv...; dims = 3)
-ẏ = tuple(f, τf, τv...)
-y = tuple(f, τf, τv...)
-@code_warntype pτL!(ẏ, 1, y)
-@benchmark ($pτL!)($(ẏ), 1, $y) # 1.5 ms (0.00% GC), 256x256, Float64
-
-=#
 
 
 
