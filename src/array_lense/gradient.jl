@@ -32,10 +32,12 @@ end
 # τArrayLense operating on (τf, τv)
 # --------------------------------
 
-function (τL::τArrayLense{m,n,Tf,d,Tg,Tt})(τv::NTuple{m,A}, τf::NTuple{n,A}) where {m,n,Tf,d,Tg,Tt<:Real,A<:Array{Tf,d}}
+function (τL::τArrayLense{m,n,Tf,d,Tg,Tt})(
+	τv::NTuple{m,A}, τf::NTuple{n,A}
+)::Tuple{NTuple{m,A}, NTuple{n,A}} where {m,n,Tf,d,Tg,Tt<:Real,A<:Array{Tf,d}}
 	pτL!  = plan(τL) 
 	rtn   = odesolve_RK4(pτL!, tuple(τv..., τf..., τL.f...), τL.t₀, τL.t₁, τL.nsteps)
-	return tuple(rtn[1:m]...), tuple(rtn[(m+1):(m+n)]...)
+	return tuple(rtn[Base.OneTo(m)]...), tuple(rtn[(m+1):(m+n)]...)
 end
 
 function Base.:*(τL::τArrayLense{m,n,Tf,d}, τvτf::Tuple{NTuple{m,A}, NTuple{n,A}}) where {m,n,Tf,d,A<:Array{Tf,d}}
@@ -46,10 +48,6 @@ function Base.:\(τL::τArrayLense{m,n,Tf,d}, τvτf::Tuple{NTuple{m,A}, NTuple{
 	invτL = inv(τL)
 	invτL(τvτf[1], τvτf[2])
 end
-
-# function (τL::τArrayLense{1,m,Tf,d,Tg,Tt})(τf::A, τv::NTuple{m,A}) where {m,Tf,d,Tg,Tt<:Real,A<:Array{Tf,d}}
-# 	τL((τf,), τv)
-# end
 
 # TODO: extend the functionality to Fields ...
 
@@ -89,10 +87,13 @@ function plan(L::τArrayLense{m,n,Tf,d,Tg,Tt}) where {m,n,Tf,d,Tg,Tt<:Real}
 	τArrayLensePlan{m,n,Tf,d,Tg,Tt}(L.v, L.∇!, ∂v, mm, p, w, ∇y, ∇x)
 end
 
-# TODO: extend to the n> 1 case ... perhaps just wrap in a for loop over f, τf?
 
-# m == 2, n==1 case ...
-function (τLp::τArrayLensePlan{2,1,Tf,d})(ẏ, t, y) where {Tf,d}
+# ODE vector field τLp(ẏ, t, y) where τLp::τArrayLensePlan 
+# --------------------------------
+
+# m == 2 case ...
+
+function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 
 	# we need updated M and p for current time t
 	# --------------------------
@@ -107,13 +108,32 @@ function (τLp::τArrayLensePlan{2,1,Tf,d})(ẏ, t, y) where {Tf,d}
 		τLp.v[1], τLp.v[2]
 	)
 
-	# unpack input
+	# unpack input (m==2)
 	# --------------------------
-	τv1, τv2, τf, f = y[1], y[2], y[3], y[4]
-	τ̇v1, τ̇v2, τ̇f, ḟ = ẏ[1], ẏ[2], ẏ[3], ẏ[4]
+	m = 2
+	τv, τ̇v = y[1:m], ẏ[1:m]
+	τf, τ̇f = y[(m+1):(m+n)], ẏ[(m+1):(m+n)]
+	f,   ḟ = y[(m+n+1):(m+2n)], ẏ[(m+n+1):(m+2n)]
+
+	for i = 1:n
+		fillḟ!_fillτ̇f!_add2τ̇v!(
+			ḟ[i], τ̇f[i], τ̇v, 
+			f[i], τf[i], τv, 
+			t, τLp
+		)
+	end
+
+end
 
 
-	# fill τ̇f (use τLp.∇y for storage)
+function fillḟ!_fillτ̇f!_add2τ̇v!(
+		ḟ::A, τ̇f::A, τ̇v::NTuple{2,A}, 
+		f::A, τf::A, τv::NTuple{2,A}, 
+		t, τLp::τArrayLensePlan{2}
+	) where {A}
+
+	# fill τ̇f (use τLp.∇y for storage).
+	# Note: make sure τLp.p is pre-computed
 	# --------------------------
 	@avx @. τLp.∇x[1] = τLp.p[1] * τf
 	@avx @. τLp.∇x[2] = τLp.p[2] * τf
@@ -139,8 +159,8 @@ function (τLp::τArrayLensePlan{2,1,Tf,d})(ẏ, t, y) where {Tf,d}
 	@avx @. τLp.w[2] *= - τf
 
 	# set initial τ̇v to `- w * τf`
-	@avx @. τ̇v1 = τLp.w[1] 
-	@avx @. τ̇v2 = τLp.w[2] 
+	@avx @. τ̇v[1] = τLp.w[1] 
+	@avx @. τ̇v[2] = τLp.w[2] 
 
 	# Note: τLp.w is technically `- w * τf` at this point
 	# now add ∂₁ * w1 * p + ∂₂ * w2 * p
@@ -151,14 +171,12 @@ function (τLp::τArrayLensePlan{2,1,Tf,d})(ẏ, t, y) where {Tf,d}
 	@avx @. τLp.∇x[1] = τLp.w[1] * τLp.p[1]
 	@avx @. τLp.∇x[2] = τLp.w[2] * τLp.p[1]
 	τLp.∇!(τLp.∇y, τLp.∇x)
-	@avx @. τ̇v1 += τLp.∇y[1] + τLp.∇y[2]  
+	@avx @. τ̇v[1] += τLp.∇y[1] + τLp.∇y[2]  
 
 	@avx @. τLp.∇x[1] = τLp.w[1] * τLp.p[2]
 	@avx @. τLp.∇x[2] = τLp.w[2] * τLp.p[2]	
  	τLp.∇!(τLp.∇y, τLp.∇x)
-	@avx @. τ̇v2 += τLp.∇y[1] + τLp.∇y[2] 
+	@avx @. τ̇v[2] += τLp.∇y[1] + τLp.∇y[2] 
 
 end
-
-
 

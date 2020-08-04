@@ -39,14 +39,10 @@ function (∇!::Nabla!{Tθ,Tφ})(y::A) where {Tθ,Tφ,Tf,A<:AbstractMatrix{Tf}}
 end
 
 
-
 function whitemap(trm::T) where T<:Transform
     zx = randn(eltype_in(trm),size_in(trm))
     Xmap(trm, zx ./ √Ωx(trm))
 end
-
-
-
 
 
 # custom pcg with function composition (Minv * A \approx I)
@@ -81,7 +77,7 @@ LinearAlgebra.dot(f::Xfield,g::Xfield) = Ωx(fieldtransform(f)) * dot(f[:],g[:])
 
 # set the transform and the gradient operator 
 # -----------------------------------------------
-trm, ∇! = @sblock let Δθ′ = 3.5, Δφ′ = 3.5, nθ = 512, nφ = 512
+trm, ∇! = @sblock let Δθ′ = 2.5, Δφ′ = 2.5, nθ = 256, nφ = 256
 	## 𝕨      = r𝕎32(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
 	𝕨      = r𝕎(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
 	trm    = ordinary_scale(𝕨)*𝕨
@@ -125,7 +121,7 @@ Cn, Ct, Cϕ, Cω, ΔCϕΔᴴ, ΔCωΔᴴ, Δ, Cv1, Cv2, Cv1v2 = @sblock let trm
     Cϕ      = DiagOp(Xfourier(trm, cϕl))
     ΔCϕΔᴴ   = DiagOp(Xfourier(trm, l.^4 .* cϕl)) 
 
-    scale_ω = 0.5
+    scale_ω = 0.01
     cωl     = scale_ω .* Spectra.cϕl_approx.(l) 
     Cω      = DiagOp(Xfourier(trm, cωl)) 
     ΔCωΔᴴ   = DiagOp(Xfourier(trm, l.^4 .* cωl))
@@ -188,6 +184,7 @@ n, t, Len, v, vϕ, vω, ϕ, ω = @sblock let trm, ∇!, Cn, Ct, Cϕ, Cω
     n = √Cn * whitemap(trm)
     ϕ = √Cϕ * whitemap(trm)
     ω = √Cω * whitemap(trm)
+    ω = 0 * ω
     vϕ = ∇!(ϕ[:])    
     vω = ∇!(ω[:]) |> x->(x[2], .-x[1])
     v  = (vϕ[1] + vω[1], vϕ[2] + vω[2])     
@@ -336,26 +333,42 @@ v[2]  |> matshow
 v[1] .+ v[2] |> matshow
 
 
+# Benchmark transpose delta lense 
+#= --------------------------
+L  = FieldLensing.ArrayLense(v, ∇!, 0, 1, 16)
+T  = t[:]
+LT = L  * T
+f  = LT
+τL   = FieldLensing.τArrayLense(v, (f,), ∇!, 1, 0, 16)
+τL′  = FieldLensing.τArrayLense(v, (f,f), ∇!, 1, 0, 16)
 
+τv  = (0 .* v[1], 0 .* v[2])
+τf  = (LT .- T,)
+τf′ = (LT .- T, LT .- T)
+
+@code_warntype τL * (τv, τf)
+@code_warntype τL′ * (τv, τf′)
+@benchmark $τL * $((τv, τf))
+##  minimum time:  125.916 ms , 256x256, Float64 (8 threads)
+@benchmark $τL′ * $((τv, τf′))
+## minimum time: 233.014 ms , 256x256, Float64 (8 threads)
+
+#-
+pτL! = FieldLensing.plan(τL) 
+# ẏ = cat(f, τf, τv...; dims = 3)
+# y = cat(f, τf, τv...; dims = 3)
+ẏ = tuple(f, τf, τv...)
+y = tuple(f, τf, τv...)
+@code_warntype pτL!(ẏ, 1, y)
+@benchmark ($pτL!)($(ẏ), 1, $y) # 1.5 ms (0.00% GC), 256x256, Float64
+
+=#
+
+
+
+
+# Benchmark Lensing and adjoint lensing
 #= ------------------------
-
-
-struct Jacobian!{Tθ,Tφ}
-    ∂θ::Tθ
-    ∂φᵀ::Tφ
-end
-
-function (𝕁!::Jacobian!{Tθ,Tφ})(y::NTuple{2,A}) where {Tθ,Tφ,Tf,A<:Array{Tf,2}}
-    y11, y21, y12, y22 = similar(y[1]), similar(y[1]), similar(y[1]), similar(y[1])
-    mul!(y11, ∇!.∂θ, y[1])
-    mul!(y21, ∇!.∂θ, y[2])
-    mul!(y12, y[1], ∇!.∂φᵀ)
-    mul!(y22, y[2], ∇!.∂φᵀ)
-    y11, y21, y12, y11
-end
-
-
-
 L  = FieldLensing.ArrayLense(v, ∇!, 0, 1, 16)
 Lᴴ = L'
 
@@ -383,56 +396,6 @@ T .- L⁻ᴴLᴴT	|> matshow; colorbar();
 #-
 @benchmark $L * $T   # 35.966 ms (0.00% GC), 256x256, 16 steps, Float64
 @benchmark $Lᴴ * $T  #
-
-=#
-
-# Test transpose delta lense 
-#= --------------------------
-L  = FieldLensing.ArrayLense(v, ∇!, 0, 1, 16)
-τL = FieldLensing.τArrayLense(v, ∇!, 1, 0, 16)
-T  = t[:]
-LT = L  * T
-
-
-f   = LT
-τf  = LT .- T
-τv  = (0 .* v[1], 0 .* v[2])
-
-
-#-
-@code_warntype τL(f, τf, τv)
-@benchmark $τL($f, $τf, $τv)
-##  minimum time:  125.916 ms , 256x256, Float64
-
-
-#-
-pτL! = FieldLensing.plan(τL) 
-# ẏ = cat(f, τf, τv...; dims = 3)
-# y = cat(f, τf, τv...; dims = 3)
-ẏ = tuple(f, τf, τv...)
-y = tuple(f, τf, τv...)
-@code_warntype pτL!(ẏ, 1, y)
-@benchmark ($pτL!)($(ẏ), 1, $y) # 1.5 ms (0.00% GC), 256x256, Float64
-
-
-f_out, τf_out, τv_out = τL(f, τf, τv)
-rtn = FieldLensing.odesolve_RK4_tup(pτL!, tuple(f, τf, τv...), τL.t₀, τL.t₁, τL.nsteps)
-
-τv_out[1] |> matshow; colorbar()
-v[1] |> matshow; colorbar()
-
-
-
-τv_out[2] |> matshow; colorbar()
-v[2] |> matshow; colorbar()
-
-
-τf_out |> matshow; colorbar()
-f     |> matshow; colorbar()
-
-f_out |> matshow; colorbar()
-f     |> matshow; colorbar()
-
 
 =#
 
