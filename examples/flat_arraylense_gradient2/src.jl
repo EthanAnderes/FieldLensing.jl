@@ -135,7 +135,7 @@ n, f, ϕ, Ł = @sblock let trm, ∇!, Cn, Cf, Cϕ
     f = √Cf * whitemap(trm)
     n = √Cn * whitemap(trm)
     ϕ = √Cϕ * whitemap(trm)
-    Ł = ϕ -> FieldLensing.ArrayLense(∇!(ϕ[:]), ∇!, 0, 1, 16)
+    Ł = x -> FieldLensing.ArrayLense(∇!(x[:]), ∇!, 0, 1, 16)
     
     MapField(n), MapField(f), MapField(ϕ), Ł
 end;
@@ -144,142 +144,197 @@ end;
 
 d = Ł(ϕ) * f + n
 
+ds = (;trm, d, Cf, Cϕ, Cn, Δ, ∇!, Ł)
 
-# Gradient update and WF closure 
-# ------------------------------------------
+#=
+v     = ∇!(ϕ[:])
+τŁ₁₀  = FieldLensing.τArrayLense(v, (f[:],), ∇!, 1, 0, 16)        
+τv, τf = map(zero,v),  ((Cn\(d-f))[:],)
+τϕ      = zero(v[1])
+τv₀, τf₀′ = τŁ₁₀ * (τv, τf)
+τϕ₀, τf₀ = FieldLensing.τpotential(τŁ₁₀, τϕ, τf)
+@benchmark $τŁ₁₀ * $((τv, τf))
+@benchmark FieldLensing.τpotential($τŁ₁₀, $τϕ, $τf)
+=#
 
-update_ϕ, update_f₀f₁, ϕf₁_logP, ∇ϕf₁_logP, ∇ϕf₀_logP, ∇f₀_logP = @sblock let trm, d, Cf, Cϕ, Cn, Δ, ∇!, Ł
 
-    # useful for testing
-    ∇f₀_logP = (ϕ₀,f₀) -> Ł(ϕ₀)' / Cn * (d - Ł(ϕ₀) * f₀) - Cf \ f₀
+# function ∇ϕf₀_logP(ϕ, f₀, ds) 
+#     v, f₁  = ds.∇!(ϕ[:]), ds.Ł(ϕ) * f₀
+#     τŁ₁₀   = FieldLensing.τArrayLense(v, (f₁[:],), ds.∇!, 1, 0, 16)        
+#     τϕ, τf = FieldLensing.τpotential(τŁ₁₀, zero(ϕ[:]),  ((ds.Cn\(ds.d-f₁))[:],) )
+#     ∇ϕ     = Xmap(ds.trm, τϕ) - ds.Cϕ \ ϕ
+#     ∇f     = Xmap(ds.trm, τf[1]) - ds.Cf \ f₀
+#     return ∇ϕ, ∇f
+# end
+# function ∇ϕf₁_logP(ϕ,f₁, ds) 
+#     v, f₀    = ds.∇!(ϕ[:]), ds.Ł(ϕ) \ f₁
+#     τŁ₀₁     = FieldLensing.τArrayLense(v, (f₀[:],), ds.∇!, 0, 1, 16)
+#     ∇ϕ₀, ∇f₀ = ∇ϕf₀_logP(ϕ,f₀, ds)       
+#     τϕ, τf   = FieldLensing.τpotential(τŁ₀₁, ∇ϕ₀[:],  (∇f₀[:],))
+#     ∇ϕ₁      = Xmap(ds.trm, τϕ)
+#     ∇f₁      = Xmap(ds.trm, τf[1])
+#     return ∇ϕ₁, ∇f₁
+# end
 
-    ∇ϕf₀_logP = function (ϕ,f₀) 
-        f₁       = Ł(ϕ)*f₀
-        v        = ∇!(ϕ[:])
-        τŁ₁₀     = FieldLensing.τArrayLense(v, (f₁[:],), ∇!, 1, 0, 16)        
-        τv₀, τf₀ = τŁ₁₀ * (map(zero,v),  ((Cn\(d-f₁))[:],) )
-        ∇ϕ       = Xmap(trm, - sum(∇!(τv₀))) - Cϕ \ ϕ
-        ∇f₀      = Xmap(trm, τf₀[1]) - Cf \ f₀
-        return ∇ϕ, ∇f₀
+
+# this one is much faster and doesn't need the potential flow ...
+function ∇ϕf₁_logP(ϕ,f₁, ds) 
+
+    v, f₀  = ds.∇!(ϕ[:]), ds.Ł(ϕ) \ f₁
+    τŁ₀₁   = FieldLensing.τArrayLense(v, (f₀[:],), ds.∇!, 0, 1, 16)
+    τŁ₁₀   = FieldLensing.τArrayLense(v, (f₁[:],), ds.∇!, 1, 0, 16)        
+
+    τv₀, τf₀ = τŁ₁₀(map(zero,v),  ((ds.Cn\(ds.d-f₁))[:],))
+    ∇f₀      = Xmap(ds.trm, τf₀[1]) - ds.Cf \ f₀
+
+    τv₁, τf₁ = τŁ₀₁(τv₀,  (∇f₀[:],))
+    ∇ϕ₁      = Xmap(ds.trm, -sum(ds.∇!(τv₁))) - ds.Cϕ \ ϕ
+    ∇f₁      = Xmap(ds.trm, τf₁[1])
+
+    return ∇ϕ₁, ∇f₁
+end
+
+function ϕf₁_logP(ϕ,f₁, ds) 
+    rtn1  = sqrt(ds.Cn) \ (ds.d-f₁)    |> x -> - dot(x, x) / 2
+    rtn2  = sqrt(ds.Cf) \ (ds.Ł(ϕ)\f₁) |> x -> - dot(x, x) / 2
+    rtn3  = sqrt(ds.Cϕ) \ ϕ            |> x -> - dot(x, x) / 2
+    return rtn1 + rtn2 + rtn3
+end
+
+function update_f₁f₀(ϕ, ds)
+    simf₀, wfhist = pcg(
+        f -> inv(inv(ds.Cf) + inv(ds.Cn)) * f, 
+        f -> ds.Ł(ϕ)' * inv(ds.Cn) * ds.Ł(ϕ) * f +  ds.Cf \ f,
+        ds.Ł(ϕ)' * inv(ds.Cn) * (ds.d + √ds.Cn * whitemap(ds.trm)) + ds.Cf \ (√ds.Cf * whitemap(ds.trm)),
+        nsteps = 50,
+        rel_tol = 1e-20,
+    )
+    simf₁ = ds.Ł(ϕ) * simf₀
+    return simf₁, simf₀, wfhist
+end
+
+function update_ϕ(ϕ,f₁,ds)
+
+    solver=:LN_SBPLX # :LN_SBPLX, :LN_COBYLA, :LN_NELDERMEAD, :GN_DIRECT_L, :GN_DIRECT_L_RAND
+
+    Cnϕ = 0.4 * maximum(real.( (ds.Δ * ds.Δ * ds.Cϕ)[!] )) * inv(ds.Δ^2)
+    nH⁻¹ = inv(inv(Cnϕ) + inv(ds.Cϕ))
+    ∇ϕ, ∇f₁ = ∇ϕf₁_logP(ϕ, f₁, ds)
+    #(nH⁻¹*∇ϕ)[:] |> matshow; colorbar()
+    nH⁻¹∇ϕ = nH⁻¹ * ∇ϕ
+
+    T = eltype_in(ds.trm)
+    opt = NLopt.Opt(solver, 1)
+    opt.maxtime      = 30
+    opt.upper_bounds = T[1.5]
+    opt.lower_bounds = T[0]
+    opt.initial_step = T[0.00001]
+    opt.max_objective = function (β, grad)
+        ϕβ = ϕ + β[1] * nH⁻¹∇ϕ
+        ϕf₁_logP(ϕ + β[1] * nH⁻¹∇ϕ, f₁, ds)
     end
 
-    ∇ϕf₁_logP = function (ϕ,f₁)
-        f₀       = Ł(ϕ)\f₁
-        v        = ∇!(ϕ[:])
-        τŁ₀₁     = FieldLensing.τArrayLense(v, (f₀[:],), ∇!, 0, 1, 16)
-        ∇ϕf₀     = ∇ϕf₀_logP(ϕ,f₀)       
-        τv₁, τf₁ = τŁ₀₁ * (∇!(∇ϕf₀[1][:]),  (∇ϕf₀[2][:],) )
-        ∇ϕ       = Xmap(trm, - sum(∇!(τv₁)))
-        ∇f₁      = Xmap(trm, τf₁[1])
-        return ∇ϕ, ∇f₁
-    end
-
-    ϕf₁_logP = function (ϕ,f₁)
-        # rtn  = d-f₁    |> x -> - dot(x, Cn \ x) / 2
-        rtn1 = sqrt(Cf) \ (Ł(ϕ)\f₁) |> x -> - dot(x, x) / 2
-        rtn2  = sqrt(Cϕ) \ ϕ        |> x -> - dot(x, x) / 2
-        return rtn1 + rtn2 
-    end
-
-    update_f₀f₁ = function (ϕ,f₁)
-        f₀  = Ł(ϕ)\f₁
-        simf₀, wfhist = pcg(
-            f -> inv(inv(Cf) + inv(Cn)) * f, 
-            f -> Ł(ϕ)' * inv(Cn) * Ł(ϕ) * f +  Cf \ f,
-            Ł(ϕ)' * inv(Cn) * (d + √Cn * whitemap(trm)) + Cf \ (√Cf * whitemap(trm)),
-            nsteps = 50,
-            rel_tol = 1e-20,
-        )
-        simf₁ = Ł(ϕ) * f₀
-        return simf₀, simf₁, wfhist
-    end
+    ll_opt, β_opt, = NLopt.optimize(opt,  T[0.000001])
+    @show ll_opt, β_opt
+    
+    return ϕ + β_opt[1] * nH⁻¹∇ϕ
+end
 
 
-    update_ϕ = function (ϕ,f₁)
-
-        # solver=:LN_SBPLX # :LN_SBPLX, :LN_COBYLA, :LN_NELDERMEAD, :GN_DIRECT_L, :GN_DIRECT_L_RAND
-        solver=:LN_COBYLA 
-
-        Cnϕ = 0.1 * maximum(real.( (Δ * Δ * Cϕ)[!] )) * inv(Δ^2)
-        invΛ∇vcurr = (inv(Cnϕ) + inv(Cϕ)) \ ∇ϕf₁_logP(ϕ,f₁)[1]
-        #invΛ∇vcurr = Cϕ * ∇ϕf₁_logP(ϕ,f₁)[1]
-        
-        T = eltype_in(trm)
-        opt = NLopt.Opt(solver, 1)
-        opt.maxtime      = 30
-        opt.upper_bounds = T[1.5]
-        opt.lower_bounds = T[0]
-        opt.initial_step = T[0.00001]
-        opt.max_objective = function (β, grad)
-            ϕβ = ϕ+β[1]*invΛ∇vcurr
-            ϕf₁_logP(ϕ+β[1]*invΛ∇vcurr, f₁)
-        end
-
-        ll_opt, β_opt, = NLopt.optimize(opt,  T[0.000001])
-        @show ll_opt, β_opt
-        
-        return ϕ + β_opt[1] * invΛ∇vcurr
-    end
-
-
-    return update_ϕ, update_f₀f₁, ϕf₁_logP, ∇ϕf₁_logP, ∇ϕf₀_logP, ∇f₀_logP
-end 
 
 
   
-f₁curr = d 
-ϕcurr  = 0*d
+ϕ₁ = 0*d
 
-f₀curr, f₁curr, wfhist = update_f₀f₁(ϕcurr, f₁curr);
-ϕcurr = update_ϕ(ϕcurr,f₁curr);
+for i = 1:3
+    global ϕ₁, f₁, f₀, wfhist
+    f₁, f₀, wfhist = update_f₁f₀(ϕ₁, ds)
+    ϕ₁ = update_ϕ(ϕ₁, f₁, ds)
+end
 
-# first test (t1 and t2 should be the same) 
-t1 = ∇ϕf₀_logP(ϕ, f₀curr)[2]
-t2 = ∇f₀_logP(ϕ, f₀curr)
+ϕ[:] |> matshow; colorbar()
+ϕ₁[:] |> matshow; colorbar()
 
-t1[:] .- t2[:] |> matshow; colorbar()
+(Δ*ϕ)[:] |> matshow; colorbar()
+(Δ*ϕ₁)[:] |> matshow; colorbar()
+
+
+
+
+
+
+
+
+
+# ---------------
+test_∇ϕf₀_logP = function (ϕ, f₀, ds) 
+    v, f₁  = ds.∇!(ϕ[:]), ds.Ł(ϕ) * f₀
+    τŁ₁₀   = FieldLensing.τArrayLense(v, (f₁[:],), ds.∇!, 1, 0, 16)        
+    τv, τf = τŁ₁₀(map(zero,v),  ((ds.Cn\(ds.d-f₁))[:],))
+    ∇ϕ     = Xmap(ds.trm, -sum(ds.∇!(τv))) #  - ds.Cϕ \ ϕ
+    ∇f     = Xmap(ds.trm, τf[1]) - ds.Cf \ f₀
+    return ∇ϕ, ∇f
+end
+
+t1, f1 = ∇ϕf₀_logP(ϕ₁, f₀, ds)
+t2, f2 = test_∇ϕf₀_logP(ϕ₁, f₀, ds)
+
+t1[:] |> matshow; colorbar()
 t2[:] |> matshow; colorbar()
+t1[:] .- t2[:] |> matshow; colorbar()
+
+f1[:] |> matshow; colorbar()
+f2[:] |> matshow; colorbar()
+f1[:] .- f2[:] |> matshow; colorbar()
 # ✓
 
 
-# ----------------
+# ---------------
+test_∇ϕf₁_logP = function (ϕ,f₁, ds) 
+    v, f₀  = ds.∇!(ϕ[:]), ds.Ł(ϕ) \ f₁
+    τŁ₀₁   = FieldLensing.τArrayLense(v, (f₀[:],), ds.∇!, 0, 1, 16)
+    τŁ₁₀   = FieldLensing.τArrayLense(v, (f₁[:],), ds.∇!, 1, 0, 16)        
 
-Cnϕ = 0.2 * maximum(real.( (Δ * Δ * Cϕ)[!] )) * inv(Δ^2)
-nH = inv(inv(Cnϕ) + inv(Cϕ))
-# (Δ^2 * nH)[!][:,1] |> loglog
-# (Δ^2 * Cϕ)[!][:,1] |> loglog
+    τv₀, τf₀ = τŁ₁₀(map(zero,v),  ((ds.Cn\(ds.d-f₁))[:],))
+    ∇f₀      = Xmap(ds.trm, τf₀[1]) - ds.Cf \ f₀
 
-∇ϕ, ∇f₁ = ∇ϕf₁_logP(ϕcurr, f₀curr)
-(nH*∇ϕ)[:] |> matshow
-ϕ[:] |> matshow
+    τv₁, τf₁ = τŁ₀₁(τv₀,  (∇f₀[:],))
+    ∇ϕ₁      = Xmap(ds.trm, -sum(ds.∇!(τv₁))) - ds.Cϕ \ ϕ
+    ∇f₁      = Xmap(ds.trm, τf₁[1])
 
-
-
- semilogy(wfhist)
-
-ϕcurr[:] |> matshow; colorbar()
-ϕ[:] |> matshow; colorbar()
-
-
-
-∇ϕf₀_logP = function (ϕ,f₀) 
-    f₁       = Ł(ϕ)*f₀
-    v        = ∇!(ϕ[:])
-    τŁ₁₀     = FieldLensing.τArrayLense(v, (f₁[:],), ∇!, 1, 0, 16)        
-    τv₀, τf₀ = τŁ₁₀ * (map(zero,v),  ((Cn\(d-Ł(ϕ)*f₀))[:],) )
-    ∇ϕ       = Xmap(trm, - sum(∇!(τv₀))) - Cϕ \ ϕ
-    ∇f₀      = Xmap(trm, τf₀[1]) - Cf \ f₀
-    return ∇ϕ, ∇f₀
+    return ∇ϕ₁, ∇f₁
 end
 
-∇ϕf₁_logP = function (ϕ,f₁)
-    f₀       = Ł(ϕ)\f₁
-    v        = ∇!(ϕ[:])
-    τŁ₀₁     = FieldLensing.τArrayLense(v, (f₀[:],), ∇!, 0, 1, 16)
-    ∇ϕf₀     = ∇ϕf₀_logP(ϕ,f₀)       
-    τv₁, τf₁ = τŁ₀₁ * (∇!(∇ϕf₀[1][:]),  (∇ϕf₀[2][:],) )
-    ∇ϕ       = Xmap(trm, - sum(∇!(τv₁)))
-    ∇f₁      = Xmap(trm, τf₁[1])
-    return ∇ϕ, ∇f₁
+
+@time t1, f1 = ∇ϕf₁_logP(ϕ₁, f₁, ds)
+@time t2, f2 = test_∇ϕf₁_logP(ϕ₁, f₁, ds)
+
+(Cϕ*t1)[:] |> matshow; colorbar()
+(Cϕ*t2)[:] |> matshow; colorbar()
+(Cϕ*(t1 - t2))[:] |> matshow; colorbar()
+
+f1[:] |> matshow; colorbar()
+f2[:] |> matshow; colorbar()
+f1[:] .- f2[:] |> matshow; colorbar()
+# ✓
+
+
+
+# ✓
+
+
+
+
+# ---------------
+# test (t1 and t2 should be the same)
+t1, t2 = @sblock let f =  f₁, ϕ = ϕ₁, ds
+    t1 = ∇ϕf₀_logP(ϕ, f, ds)[2] + ds.Cf \ f
+    t2 = ds.Ł(ϕ)' * (ds.Cn \ (ds.d - ds.Ł(ϕ) * f))
+    t1, t2
 end
+t1[:] |> matshow; colorbar()
+t2[:] |> matshow; colorbar()
+t1[:] .- t2[:] |> matshow; colorbar()
+
+# ✓
 
