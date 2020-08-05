@@ -43,6 +43,7 @@ struct ArrayLenseᴴPlan{m,Tf,d,Tg,Tt<:Real}
 	mm::Matrix{Array{Tf,d}}    
 	p::NTuple{m,Array{Tf,d}}    
 	∇y::NTuple{m,Array{Tf,d}}    
+	∇x::NTuple{m,Array{Tf,d}}    
 end
 
 function plan(L::ArrayLenseᴴ{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
@@ -53,7 +54,8 @@ function plan(L::ArrayLenseᴴ{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
 	mm  = deepcopy(∂v)
 	p   = deepcopy(L.v)
 	∇y  = deepcopy(L.v)
-	ArrayLenseᴴPlan{m,Tf,d,Tg,Tt}(L.v, L.∇!, ∂v, mm, p, ∇y)
+	∇x  = deepcopy(L.v)
+	ArrayLenseᴴPlan{m,Tf,d,Tg,Tt}(L.v, L.∇!, ∂v, mm, p, ∇y, ∇x)
 end
 
 
@@ -62,33 +64,22 @@ end
 
 # (m==1). Note: overwrites ẏ
 function (Lp::ArrayLenseᴴPlan{1,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}
-
-	set1M!(Lp.mm[1,1], t, Lp.∂v[1,1])
-	set1p!(Lp.p[1], Lp.mm[1,1], Lp.v[1])
-	@avx Lp.p[1] .*= y
-	Lp.∇!(Lp.∇y, Lp.p) # stored in Lp.∇y
-	@avx @. ẏ =  Lp.∇y[1] # sumᵢ ∇ⁱ⋅pxⁱ⋅yx
-
+	setpM!(Lp.p[1], Lp.mm[1,1], t, Lp.v[1], Lp.∂v[1,1])
+	∇ⁱvⁱf!(ẏ, Lp.p, y, Lp.∇!, Lp.∇x, Lp.∇y) # ∇ⁱpⁱy
 end
 
 # (m==2). Note: overwrites ẏ
-function (Lp::ArrayLenseᴴPlan{2,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}		
-	
-	set2M!(
-		Lp.mm[1,1],  Lp.mm[2,1],  Lp.mm[1,2],  Lp.mm[2,2], 
-		t, 
-		Lp.∂v[1,1], Lp.∂v[2,1], Lp.∂v[1,2], Lp.∂v[2,2]
-	)
-	set2p!(
+function (Lp::ArrayLenseᴴPlan{2,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}
+	setpM!(
 		Lp.p[1], Lp.p[2], 
 		Lp.mm[1,1],  Lp.mm[2,1],  Lp.mm[1,2],  Lp.mm[2,2], 
-		Lp.v[1], Lp.v[2]
+		t, 
+		Lp.v[1], Lp.v[2],
+		Lp.∂v[1,1], Lp.∂v[2,1], Lp.∂v[1,2], Lp.∂v[2,2]
 	)
-	@avx Lp.p[1] .*= y
-	@avx Lp.p[2] .*= y
-	Lp.∇!(Lp.∇y, Lp.p) # stored in Lp.∇y
-	@avx @. ẏ =  Lp.∇y[1] + Lp.∇y[2] # sumᵢ ∇ⁱ⋅pxⁱ⋅yx
-
+	∇ⁱvⁱf!(ẏ, Lp.p, y, Lp.∇!, Lp.∇x, Lp.∇y) # ∇ⁱpⁱy
 end
+
+
 
 

@@ -95,15 +95,12 @@ end
 function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 	# we need updated M and p for current time t
 	# --------------------------
-	set2M!(
-		τLp.mm[1,1],  τLp.mm[2,1],  τLp.mm[1,2],  τLp.mm[2,2], 
-		t, 
-		τLp.∂v[1,1], τLp.∂v[2,1], τLp.∂v[1,2], τLp.∂v[2,2]
-	)
-	set2p!(
+	setpM!(
 		τLp.p[1], τLp.p[2], 
 		τLp.mm[1,1],  τLp.mm[2,1],  τLp.mm[1,2],  τLp.mm[2,2], 
-		τLp.v[1], τLp.v[2]
+		t, 
+		τLp.v[1], τLp.v[2], 
+		τLp.∂v[1,1], τLp.∂v[2,1], τLp.∂v[1,2], τLp.∂v[2,2]
 	)
 
 	# update τ̇f and ḟ (and τLp.w for use in updating τ̇v)
@@ -111,56 +108,30 @@ function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 	# initialize τLp.w (it will get updated in the following loop) 
 	@avx @. τLp.w[1] = 0
 	@avx @. τLp.w[2] = 0
-	for i in Base.OneTo(n)
+	for i = 1:n
 		τ̇f, τf = ẏ[2+i],   y[2+i] 	# ẏ[m+i],   y[m+i]
 		ḟ, f   = ẏ[2+n+i], y[2+n+i] # ẏ[m+n+i], y[m+n+i]   
-		fill_τ̇f_ḟ_add2_τLpw(τ̇f, ḟ, f, τLp, τf)
+
+		# fill τ̇f = ∇ⁱpⁱτf (make sure τLp.p is pre-computed)
+		∇ⁱvⁱf!(τ̇f, τLp.p, τf, τLp.∇!, τLp.∇x, τLp.∇y)
+
+		# fill ḟ (save ∇f in τLp.∇y for storage)
+		τLp.∇!(τLp.∇y, f)  
+		@avx @. ḟ =  τLp.p[1] * τLp.∇y[1] + τLp.p[2] * τLp.∇y[2] # pxⁱ⋅ ∇ⁱ ⋅ yx
+
+		# add 2 w (use ∇f stored in τLp.∇y)
+		# τf * Mᴴ * ∇f, note the transpose on M
+		@avx @. τLp.w[1] += τf * (τLp.mm[1,1] * τLp.∇y[1] + τLp.mm[2,1] * τLp.∇y[2])  
+		@avx @. τLp.w[2] += τf * (τLp.mm[1,2] * τLp.∇y[1] + τLp.mm[2,2] * τLp.∇y[2]) 
 	end
 
-	# update τ̇v (using τLp.w)
+	# update τ̇v ≡ ẏ[1:m]
 	# ----------------------
-	# unpack τ̇v ≡ ẏ[1:m]
-	τ̇v = ẏ[Base.OneTo(2)] # ẏ[Base.OneTo(m)]
-
-	# initialize τ̇v with (1 + t*div(p)) .* w
-	τLp.∇!(τLp.∇y, τLp.p)
-	@avx @. τLp.∇x[1] = 1 + t * (τLp.∇y[1] + τLp.∇y[2]) # holds (1 + t*div(p))
-	@avx @. τ̇v[1] = τLp.∇x[1] * τLp.w[1] 
-	@avx @. τ̇v[2] = τLp.∇x[1] * τLp.w[2] 
-
-	# add final term τ̇v[q] += t * p^i ⋅ ∇^i W^q 
-	τLp.∇!(τLp.∇x, τLp.w[1])  
-	τLp.∇!(τLp.∇y, τLp.w[2])  
-	@avx @. τ̇v[1] += t * (τLp.p[1] * τLp.∇x[1] +  τLp.p[2] * τLp.∇x[2])
-	@avx @. τ̇v[2] += t * (τLp.p[1] * τLp.∇y[1] +  τLp.p[2] * τLp.∇y[2])
+	for i = 1:2 # m == 2
+		@avx @. τLp.∇x[1] = τLp.p[1]*τLp.w[i]  
+		@avx @. τLp.∇x[2] = τLp.p[2]*τLp.w[i]  
+		τLp.∇!(τLp.∇y, τLp.∇x)  
+		@avx @. ẏ[i] = - τLp.w[i] - t * (τLp.∇y[1] + τLp.∇y[2])
+	end
 
 end
-
-
-function fill_τ̇f_ḟ_add2_τLpw(τ̇f::A, ḟ::A, f::A, τLp::τArrayLensePlan{2}, τf::A) where {A}
-	# fill τ̇f (use τLp.∇y for storage).
-	# Note: make sure τLp.p is pre-computed
-	# --------------------------
-	@avx @. τLp.∇x[1] = τLp.p[1] * τf
-	@avx @. τLp.∇x[2] = τLp.p[2] * τf
-	τLp.∇!(τLp.∇y, τLp.∇x)  
-	@avx @. τ̇f =  τLp.∇y[1] + τLp.∇y[2] 
-	
-	# fill ḟ (save ∇f in τLp.∇y for storage)
-	# --------------------------
-	τLp.∇!(τLp.∇y, f)  
-	@avx @. ḟ =  τLp.p[1] * τLp.∇y[1] + τLp.p[2] * τLp.∇y[2] # pxⁱ⋅ ∇ⁱ ⋅ yx
-
-	# add 2 w (use ∇f stored in τLp.∇y)
-	# --------------------------
-	# compute by hijacking p constructor 
-	set2p!(
-		τLp.∇x[1], τLp.∇x[2], # storage 
-		τLp.mm[1,1],  τLp.mm[1,2], τLp.mm[2,1], τLp.mm[2,2], # note the mm transpose
-		τLp.∇y[1], τLp.∇y[2] # currently holding ∇f
-	)
-	@avx @. τLp.w[1] += - τLp.∇x[1] * τf 
-	@avx @. τLp.w[2] += - τLp.∇x[2] * τf
-
-end
-

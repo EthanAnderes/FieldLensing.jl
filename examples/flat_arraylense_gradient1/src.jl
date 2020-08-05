@@ -17,6 +17,12 @@ using NLopt
 
 # To use ArrayLense we just need to define ∇!
 # -----------------------------------------------
+
+# Need to define a struct with an instance 
+# that can operate on arguments as follows 
+#  ∇!(∇y::NTuple{m,A}, f::A)           ->  ∇y = (∇¹f,∇²f, ..., ∇ᵐf)
+#  ∇!(∇y::NTuple{m,A}, v::NTuple{m,A}) ->  ∇y = (∇¹v¹,∇²v², ..., ∇ᵐvᵐ)
+
 struct Nabla!{Tθ,Tφ}
     ∂θ::Tθ
     ∂φᵀ::Tφ
@@ -77,7 +83,7 @@ LinearAlgebra.dot(f::Xfield,g::Xfield) = Ωx(fieldtransform(f)) * dot(f[:],g[:])
 
 # set the transform and the gradient operator 
 # -----------------------------------------------
-trm, ∇! = @sblock let Δθ′ = 2.5, Δφ′ = 2.5, nθ = 512, nφ = 512
+trm, ∇! = @sblock let Δθ′ = 2.5, Δφ′ = 2.5, nθ = 256, nφ = 256
 	## 𝕨      = r𝕎32(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
 	𝕨      = r𝕎(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
 	trm    = ordinary_scale(𝕨)*𝕨
@@ -197,6 +203,7 @@ end;
 d = Len(v) * t + n
 
 
+
 # Benchmark transpose delta lense 
 #= 
 L  = FieldLensing.ArrayLense(v, ∇!, 0, 1, 16)
@@ -211,15 +218,18 @@ f  = LT
 τf′ = (LT .- T, LT .- T)
 
 @benchmark $τL * $((τv, τf))
-## 140ms 256x256, Float64 (8 threads)
+## 124ms 256x256, Float64 (8 threads)
 @benchmark $τL′ * $((τv, τf′))
-## 202ms 256x256, Float64 (8 threads)
+## 182ms 256x256, Float64 (8 threads)
 
 @code_warntype τL * (τv, τf)
 @code_warntype τL′ * (τv, τf′)
 
 @benchmark $L * $T
 ## 35ms 256x256, Float64 (8 threads)
+
+@benchmark $(L') * $T
+
 
 #-
 pτL! = FieldLensing.plan(τL) 
@@ -242,7 +252,7 @@ y = tuple(f, τf, τv...)
 vcurr = map(zero, v)
 
 # update tcurr, vcurr
-for rtnn = 1:5
+for rtnn = 1:2
     global tcurr, vcurr
 
     tcurr, hcurr = pcg(
