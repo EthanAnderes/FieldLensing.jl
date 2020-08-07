@@ -178,7 +178,7 @@ v     = ∇!(ϕ[:])
 
 
 # this one is much faster and doesn't need the potential flow ...
-function ∇ϕf₁_logP(ϕ,f₁, ds) 
+function ∇ϕf₁_logP(ϕ, f₁, ds) 
 
     v, f₀  = ds.∇!(ϕ[:]), ds.Ł(ϕ) \ f₁
     τŁ₀₁   = FieldLensing.τArrayLense(v, (f₀[:],), ds.∇!, 0, 1, 16)

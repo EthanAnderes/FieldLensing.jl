@@ -217,6 +217,15 @@ f  = LT
 τf  = (LT .- T,)
 τf′ = (LT .- T, LT .- T)
 
+
+@benchmark $L * $T
+## 35ms 256x256, Float64 (8 threads)
+45
+@benchmark $(L') * $T
+
+45, 154
+
+
 @benchmark $τL * $((τv, τf))
 ## 124ms 256x256, Float64 (8 threads)
 @benchmark $τL′ * $((τv, τf′))
@@ -224,12 +233,6 @@ f  = LT
 
 @code_warntype τL * (τv, τf)
 @code_warntype τL′ * (τv, τf′)
-
-@benchmark $L * $T
-## 35ms 256x256, Float64 (8 threads)
-
-@benchmark $(L') * $T
-
 
 #-
 pτL! = FieldLensing.plan(τL) 
