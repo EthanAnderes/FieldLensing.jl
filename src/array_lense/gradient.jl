@@ -42,61 +42,9 @@ function (τL::τArrayLense{m,n,Tf,d,Tg,Tt})(
 
 end
 
-# TODO: it would be nice to make this tighter ..
-# Actually, it appears it is not needed so I would consider removing it.
-# use the following when working with a vector field generated via a potential
-function τpotential(
-		τL::τArrayLense{m,n,Tf,d,Tg,Tt},
-		τϕ::A, 
-		τf::NTuple{n,A}
-	)::Tuple{A, NTuple{n,A}} where {m,n,Tf,d,Tg,Tt<:Real,A<:Array{Tf,d}}
-
-	pτL!  = plan(τL) 
-
-	y′ = deepcopy(tuple(τL.v..., τf..., τL.f...))
-	ẏ′ = deepcopy(tuple(τL.v..., τf..., τL.f...))
-
-	f! = function (ẏ,t,y)
-		# fill y′ as an extension to y
-		# ------------------
-		# first y′[1:m] ... set τv (in y′) with ∇(τϕ) (from y)
-		pτL!.∇!(y′[Base.OneTo(m)], first(y)) # y′[1:m] = ∇!(τϕ)
-
-		# now y′[(m+1):(m+2n)] directly from tail of y
-		ytail  = Base.tail(y)
-		y′tail = y′[(m+1):end]
-		for i = 1:2n
-			@avx @. y′tail[i] = ytail[i]
-		end
-
-		# now compute ẏ′ from y′
-		# ------------------
-		pτL!(ẏ′, t, y′)
-
-		# finally compute ẏ via compression of ẏ′
-		# -----------------------
-		∇ⁱvⁱ!(first(ẏ), tuple(ẏ′[Base.OneTo(m)]...), pτL!.∇!, pτL!.∇x)
-		@avx @. ẏ[1] *= -1
-
-		ẏtail  = Base.tail(ẏ)
-		ẏ′tail = ẏ′[(m+1):end]
-		for i = 1:2n
-			@avx @. ẏtail[i] = ẏ′tail[i]
-		end
-	end
-
-	rtn   = odesolve_RK4(f!, tuple(τϕ, τf..., τL.f...), τL.t₀, τL.t₁, τL.nsteps)
-	
-	return first(rtn), tuple(Base.tail(rtn)[Base.OneTo(n)]...)
-
-end
-
-
-
 
 # *, \, inv τArrayLense, need to move τL.f from time t₀ to time t₁
 # --------------------------------
-
 
 function Base.:*(τL::τArrayLense{m,n,Tf,d}, τvτf::Tuple{NTuple{m,A}, NTuple{n,A}}) where {m,n,Tf,d,A<:Array{Tf,d}}
 	τL(τvτf[1], τvτf[2])

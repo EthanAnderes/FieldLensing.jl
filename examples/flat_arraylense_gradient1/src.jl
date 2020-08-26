@@ -223,7 +223,6 @@ f  = LT
 45
 @benchmark $(L') * $T
 
-45, 154
 
 
 @benchmark $τL * $((τv, τf))
