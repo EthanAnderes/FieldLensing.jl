@@ -107,8 +107,8 @@ function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 	# update τ̇f and ḟ (and τLp.w for use in updating τ̇v)
 	# --------------------------
 	# initialize τLp.w (it will get updated in the following loop) 
-	@avx @. τLp.w[1] = 0
-	@avx @. τLp.w[2] = 0
+	τLp.w[1] .= 0
+	τLp.w[2] .= 0
 	for i = 1:n
 		τ̇f, τf = ẏ[2+i],   y[2+i] 	# ẏ[m+i],   y[m+i]
 		ḟ, f   = ẏ[2+n+i], y[2+n+i] # ẏ[m+n+i], y[m+n+i]   
@@ -129,8 +129,8 @@ function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 	# update τ̇v ≡ ẏ[1:m]
 	# ----------------------
 	for i = 1:2 # m == 2
-		@avx @. τLp.∇x[1] = τLp.p[1]*τLp.w[i]  
-		@avx @. τLp.∇x[2] = τLp.p[2]*τLp.w[i]  
+		@avx @. τLp.∇x[1] = τLp.p[1] * τLp.w[i]  
+		@avx @. τLp.∇x[2] = τLp.p[2] * τLp.w[i]  
 		τLp.∇!(τLp.∇y, τLp.∇x)  
 		@avx @. ẏ[i] = - τLp.w[i] - t * (τLp.∇y[1] + τLp.∇y[2])
 	end

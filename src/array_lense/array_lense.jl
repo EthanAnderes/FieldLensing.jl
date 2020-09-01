@@ -13,36 +13,40 @@
 
 function ∇ⁱvⁱ!(s::A, v::NTuple{m,A}, ∇!, ∇x::NTuple{m,A}) where {m,A<:AbstractMatrix}
     ∇!(∇x, v)  
-    @avx @. s = ∇x[1]
+    @inbounds @. s = ∇x[1]
     for i = 2:m
-        @avx @. s += ∇x[i]
+        @inbounds @. s += ∇x[i]
     end
     return s
 end
 
 function ∇ⁱvⁱf!(s::A, v::NTuple{m,A}, f::A, ∇!, ∇x::NTuple{m,A}, ∇y::NTuple{m,A}) where {m,A<:AbstractMatrix}
     for i = 1:m
-        @avx @. ∇y[i] = v[i] * f
+        @inbounds @. ∇x[i] = v[i] * f
     end
-    ∇ⁱvⁱ!(s, ∇y, ∇!, ∇x)
+    ∇ⁱvⁱ!(s, ∇x, ∇!, ∇y)
 end
+
 
 function vⁱ∇ⁱf!(s::A, v::NTuple{m,A}, f::A, ∇!, ∇x::NTuple{m,A}) where {m,A<:AbstractMatrix}
     ∇!(∇x, f)
-    @avx @. s = ∇x[1] * v[1]
+    @inbounds @. s = ∇x[1] * v[1]
     for i = 2:m
-        @avx @. s += ∇x[i] * v[i]
+        @inbounds @. s += ∇x[i] * v[i]
     end
     return s
 end
 
 # just to make these as fast as possible for m==2 we can specialize
 
-function ∇ⁱvⁱ!(s::A, v::NTuple{2,A}, ∇!, ∇x::NTuple{2,A}) where {A<:AbstractMatrix}
-    ∇!(∇x, v)  
-    @avx @. s = ∇x[1] + ∇x[2]
+function ∇ⁱvⁱf!(s::A, v::NTuple{2,A}, f::A, ∇!, ∇x::NTuple{2,A}, ∇y::NTuple{2,A}) where {m,A<:AbstractMatrix}
+    @avx @. ∇x[1] = v[1] * f
+    @avx @. ∇x[2] = v[2] * f
+    ∇!(∇y, ∇x)
+    @avx @. s = ∇y[1] + ∇y[2]
     return s
 end
+
 
 function vⁱ∇ⁱf!(s::A, v::NTuple{2,A}, f::A, ∇!, ∇x::NTuple{2,A}) where {A<:AbstractMatrix}
     ∇!(∇x, f)
@@ -120,8 +124,8 @@ end
 
 # m == 1
 function setpM!(m, t, v, ∂v)
-	@avx @. m  = 1 / (1 + t * ∂v)
-	@avx @. p  = m * v
+	@inbounds @. m  = 1 / (1 + t * ∂v)
+	@inbounds @. p  = m * v
 end
 
 
@@ -133,14 +137,15 @@ function setpM!(p1, p2, m11,  m21,  m12,  m22, t, v1, v2, ∂v11, ∂v21, ∂v12
 		m21[i] =   - t * ∂v21[i] 
 		m22[i] = 1 + t * ∂v11[i] 
 		dt     = m11[i] * m22[i] - m12[i] * m21[i]
-		p1[i]  = (m11[i] * v1[i] + m12[i] * v2[i])/dt
- 		p2[i]  = (m21[i] * v1[i] + m22[i] * v2[i])/dt
 		m11[i] /= dt
 		m12[i] /= dt
 		m21[i] /= dt
 		m22[i] /= dt
+		p1[i]  = m11[i] * v1[i] + m12[i] * v2[i]
+ 		p2[i]  = m21[i] * v1[i] + m22[i] * v2[i]
 	end
 end
+
 
 
 
