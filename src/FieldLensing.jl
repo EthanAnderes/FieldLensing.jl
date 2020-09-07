@@ -71,14 +71,13 @@ Base.:\(L::AbstractFlow, f::Union{Field,Array}) = flow(inv(L),f)
 # =========================================
 
 # ArrayLense
-export ArrayLense, ArrayLenseᴴ
 
+include("array_lense/gradient.jl")
 include("array_lense/array_lense.jl")
 include("array_lense/adjoint_array_lense.jl")
-include("array_lense/gradient.jl")
+include("array_lense/transpose_delta_array_lense.jl")
 
 # Xlense and AdjointXlense
-export Xlense, AdjointXlense
 
 include("xlense/xlense.jl")
 include("xlense/xlense_gradient_plan.jl")

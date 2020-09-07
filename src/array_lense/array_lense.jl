@@ -6,10 +6,6 @@
 
 # Basic methods used in most ArrayLense methods
 # --------------------------------------
-# Need to define a struct with an instance 
-# that can operate on arguments as follows 
-#  ∇!(∇y::NTuple{m,A}, f::A)           ->  ∇y = (∇¹f,∇²f, ..., ∇ᵐf)
-#  ∇!(∇y::NTuple{m,A}, v::NTuple{m,A}) ->  ∇y = (∇¹v¹,∇²v², ..., ∇ᵐvᵐ)
 
 function ∇ⁱvⁱ!(s::A, v::NTuple{m,A}, ∇!, ∇x::NTuple{m,A}) where {m,A<:AbstractMatrix}
     ∇!(∇x, v)  
@@ -73,7 +69,7 @@ end
 
 # ArrayLense
 # --------------------------------
-struct ArrayLense{m,Tf,d,Tg,Tt<:Real}  <: AbstractFlow{XFields.Id{Tf,d},Tf,Tf,d}
+struct ArrayLense{m,Tf,d,Tg<:Gradient{m},Tt<:Real}  <: AbstractFlow{XFields.Id{Tf,d},Tf,Tf,d}
 	v::NTuple{m,Array{Tf,d}}
 	∇!::Tg  
 	t₀::Tt
@@ -90,7 +86,7 @@ end
 
 # ArrayLensePlan
 # --------------------------------
-struct ArrayLensePlan{m,Tf,d,Tg,Tt<:Real}
+struct ArrayLensePlan{m,Tf,d,Tg<:Gradient{m},Tt<:Real}
 	v::NTuple{m,Array{Tf,d}} 
 	∇!::Tg   
 	∂v::Matrix{Array{Tf,d}}    
@@ -99,7 +95,7 @@ struct ArrayLensePlan{m,Tf,d,Tg,Tt<:Real}
 	∇y::NTuple{m,Array{Tf,d}}    
 end
 
-function plan(L::ArrayLense{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
+function plan(L::ArrayLense{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg<:Gradient{m},Tt<:Real}
 	∂v = Array{Tf,d}[zeros(Tf,size(L.v[r])) for r=1:m, c=1:m]
 	for r = 1:m
 		L.∇!(tuple(∂v[r,:]...), L.v[r])

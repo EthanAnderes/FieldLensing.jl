@@ -4,13 +4,13 @@
 # d is the dimension of the Xfield storage 
 # m is the intrinsic dimension of the field (i.e ndims(∇))
 
-# Need to define a struct with an instance 
-# that can operate on arguments as follows 
-#  ∇!(∇y::NTuple{m,A}, y::NTuple{m,A}) where {Tf,d, A<:Array{Tf,d}}
+# TODO: perhaps we want the user to explicitly define
+# the adjoint of the partial derivatives and then use them 
+# in the transpose lensing ...
 
 # ArrayLenseᴴ
 # --------------------------------
-struct ArrayLenseᴴ{m,Tf,d,Tg,Tt<:Real}  <: AbstractFlow{XFields.Id{Tf,d},Tf,Tf,d}
+struct ArrayLenseᴴ{m,Tf,d,Tg<:Gradient{m},Tt<:Real}  <: AbstractFlow{XFields.Id{Tf,d},Tf,Tf,d}
 	v::NTuple{m,Array{Tf,d}}
 	∇!::Tg  
 	t₀::Tt
@@ -36,7 +36,7 @@ end
 
 # ArrayLenseᴴPlan
 # --------------------------------
-struct ArrayLenseᴴPlan{m,Tf,d,Tg,Tt<:Real}
+struct ArrayLenseᴴPlan{m,Tf,d,Tg<:Gradient{m},Tt<:Real}
 	v::NTuple{m,Array{Tf,d}} 
 	∇!::Tg   
 	∂v::Matrix{Array{Tf,d}}    
@@ -46,7 +46,7 @@ struct ArrayLenseᴴPlan{m,Tf,d,Tg,Tt<:Real}
 	∇x::NTuple{m,Array{Tf,d}}    
 end
 
-function plan(L::ArrayLenseᴴ{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg,Tt<:Real}
+function plan(L::ArrayLenseᴴ{m,Tf,d,Tg,Tt}) where {m,Tf,d,Tg<:Gradient{m},Tt<:Real}
 	∂v = Array{Tf,d}[zeros(Tf,size(L.v[r])) for r=1:m, c=1:m]
 	for r = 1:m
 		L.∇!(tuple(∂v[r,:]...), L.v[r])
