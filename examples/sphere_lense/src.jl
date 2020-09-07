@@ -4,13 +4,16 @@
 
 import FFTW
 FFTW.set_num_threads(5)
-import FFTransforms
-using FFTransforms: r𝕎, 𝕀, ⊗, ordinary_scale
 
-using Spectra
-using XFields
 using FieldLensing
+using FieldLensing: ArrayLense
+
 using SphereTransforms
+using XFields
+using Spectra
+
+import FFTransforms
+using FFTransforms: r𝕎, 𝕎, 𝕀, ⊗, ordinary_scale
 
 using SparseArrays
 using LinearAlgebra
@@ -22,7 +25,7 @@ using BenchmarkTools
 # Set the Xfield transform 
 # ----------
 
-trn = @sblock let T=Float64
+trm = @sblock let T=Float64
     spin = 0
     𝕊(T, 4*512, 5*512 - 1, spin)
 end
@@ -30,12 +33,12 @@ end
 
 #-
 
-@show Δθarcmin = Δθ′(trn)
-@show Δφarcmin = Δφ′(trn);
+@show Δθarcmin = Δθ′(trm)
+@show Δφarcmin = Δφ′(trm);
 
 #-
 
-l, m = lm(trn);
+l, m = lm(trm);
 
 #- 
 
@@ -49,8 +52,8 @@ m
 # Compute the spectral matrices which mimic CMB tempurature and lesing potential
 # ------------------------------
 
-Ct, Cϕ = @sblock let trn
-    l, m   = lm(trn)
+Ct, Cϕ = @sblock let trm
+    l, m   = lm(trm)
 
     cϕl = Spectra.cϕl_approx.(l) 
     
@@ -62,8 +65,8 @@ Ct, Cϕ = @sblock let trn
 
     cϕl[l .< 2] .= 0
 
-    Ct  = DiagOp(Xfourier(trn, cTl)) 
-    Cϕ  = DiagOp(Xfourier(trn, cϕl)) 
+    Ct  = DiagOp(Xfourier(trm, cTl)) 
+    Cϕ  = DiagOp(Xfourier(trm, cϕl)) 
 
     Ct, Cϕ
 end;
@@ -71,12 +74,12 @@ end;
 # Simulate T and ϕ fields
 # ---------------
 
-T, ϕ = @sblock let trn, Ct, Cϕ
-    zTlm = SphereTransforms.white_fourier(trn)
-    zϕlm = SphereTransforms.white_fourier(trn)
+T, ϕ = @sblock let trm, Ct, Cϕ
+    zTlm = SphereTransforms.white_fourier(trm)
+    zϕlm = SphereTransforms.white_fourier(trm)
 
-    T = √Ct * Xfourier(trn, zTlm)
-    ϕ = √Cϕ * Xfourier(trn, zϕlm)
+    T = √Ct * Xfourier(trm, zTlm)
+    ϕ = √Cϕ * Xfourier(trm, zϕlm)
 
     T, ϕ
 end;
@@ -95,64 +98,85 @@ T[:] |> matshow; colorbar();
 # ======================================
 # To use ArrayLense we just need to define ∇!
 
-struct Nabla!{Tθ,Tφ}
+struct Nabla!{Tθ,Tφ} <: FieldLensing.Gradient{2}
     ∂θ::Tθ
     ∂φᵀ::Tφ
 end
 
-function (∇!::Nabla!{Tθ,Tφ})(∇y::NTuple{2,A}, y::NTuple{2,A}) where {Tθ,Tφ,Tf,A<:Array{Tf,2}}
-    mul!(∇y[1], ∇!.∂θ, y[1])
-    mul!(∇y[2], y[2], ∇!.∂φᵀ)
-    ∇y
+function LinearAlgebra.adjoint(∇!::Nabla!)
+    return Nabla!(
+        ∇!.∂θ',
+        ∇!.∂φᵀ',
+    )
 end
 
-function (∇!::Nabla!{Tθ,Tφ})(∇y::NTuple{2,A}, y::A) where {Tθ,Tφ,Tf,A<:Array{Tf,2}}
-    ∇!(∇y, (y,y))
+function (∇!::Nabla!{Tθ,Tφ})(des, y, ::Val{1}) where {Tθ,Tφ} 
+    mul!(des, ∇!.∂θ, y)
 end
 
-function (∇!::Nabla!{Tθ,Tφ})(y::A) where {Tθ,Tφ,Tf,A<:Array{Tf,2}}
-    ∇y = (similar(y), similar(y))
-    ∇!(∇y, (y,y))
-    ∇y
-end
+function (∇!::Nabla!{Tθ,Tφ})(des, y, ::Val{2}) where {Tθ,Tφ}
+    mul!(des, y, ∇!.∂φᵀ)
+end 
+
 
 # Construct ∂θ (action by left mult)
 #------------------------
 #  for healpix on the equitorial belt, cos(θ) is on an even grid.
 
 # using SphereTransforms.FastTransforms: chebyshevpoints
-# cosθ = chebyshevpoints(Float64, trn.nθ; kind=1)
-∂θ = @sblock let trn 
-    onesnθm1 = fill(1,trn.nθ-1)
-    ∂θ = (1 / (2Δθ(trn))) * spdiagm(-1 => .-onesnθm1, 1 => onesnθm1)
-    ∂θ[1,:] .= 0
-    ∂θ[end,:] .= 0
-    ∂θ
+# cosθ = chebyshevpoints(Float64, trm.nθ; kind=1)
+∂θ = @sblock let trm 
+    Δθℝ = Δθ(trm)
+    ∂θ′ = spdiagm(
+            -2 => fill( 1,trm.nθ-2),
+            -1 => fill(-8,trm.nθ-1),
+             1 => fill( 8,trm.nθ-1),
+             2 => fill(-1,trm.nθ-2),
+            )
+    ∂θ′[1,end]   =  -8
+    ∂θ′[1,end-1] =  1
+    ∂θ′[2,end]   =  1
+
+    ∂θ′[end,1]   =  8
+    ∂θ′[end,2]   = -1
+    ∂θ′[end-1,1] = -1
+
+    ∂θ = (1 / (12Δθℝ)) * ∂θ′
+    ## return (∂θ - ∂θ') / 2 
+    return ∂θ 
 end
 
 
 # Construct ∂φᵀ (action by right mult)
 #------------------------
 
-∂φᵀ = @sblock let trn 
-    onesnφm1 = fill(1,trn.nφ-1)
-    ∂φ      = spdiagm(-1 => .-onesnφm1, 1 => onesnφm1)
-    ## for the periodic boundary conditions
-    ∂φ[1,end] = -1
-    ∂φ[end,1] =  1
-    ## now as a right operator
-    ## (∂φ * f')' == ∂/∂φ f == f * ∂φᵀ
-    ∂φᵀ = transpose((1 / (2Δφ(trn))) * ∂φ);
-    ∂φᵀ
+∂φᵀ = @sblock let trm 
+    Δφℝ = Δφ(trm)
+    ∂φ  = spdiagm(
+            -2 => fill( 1,trm.nφ-2),
+            -1 => fill(-8,trm.nφ-1),
+             1 => fill( 8,trm.nφ-1),
+             2 => fill(-1,trm.nφ-2),
+            )
+    ∂φ[1,end]   =  -8
+    ∂φ[1,end-1] =  1
+    ∂φ[2,end]   =  1
+
+    ∂φ[end,1]   =  8
+    ∂φ[end,2]   =  -1
+    ∂φ[end-1,1] =  -1
+
+    ∂φᵀ = transpose((1 / (12Δφℝ)) * ∂φ)
+    return ∂φᵀ 
 end
 
 # belt displacement field
 ### The following leads to some systematics at the edges
-vϕbelt = @sblock let trn, ϕ, ∂θ, ∂φᵀ
-    θ = pix(trn)[1]
+vϕbelt = @sblock let trm, ϕ, ∂θ, ∂φᵀ
+    θ = pix(trm)[1]
     #sinθ = sin.(θ)
     #cscθ = csc.(θ) # 1/sinθ
-    sin⁻²θ = 1 .+ (cot.(θ)).^2 # = cscθ^2
+    sin⁻²θ = csc.(θ).^2
 
     ϕbelt = ϕ[:]
     ∂θϕ = ∂θ * ϕbelt
@@ -199,43 +223,62 @@ lenTbelt[50:end-50,:] |> matshow; colorbar();
 # ======================================
 # To use ArrayLense we just need to define ∇!
 
-struct Nabla!′{Tθ,T1φ,T2φ,T3φ}
+
+struct Pix1dFFTNabla!{Tθ,TW,Tik,Tx} <: FieldLensing.Gradient{2}
     ∂θ::Tθ
-    planFFT::T1φ
-    ikφ::T2φ
-    ak::T3φ
+    planW::TW
+    ikφ::Tik
+    sk::Tik
+    sx::Tx
 end
 
-function (∇!::Nabla!′{Tθ,T1φ,T2φ,T3φ})(∇y::NTuple{2,A}, y::NTuple{2,A}) where {Tθ,T1φ,T2φ,T3φ,Tf,A<:Array{Tf,2}}
-    mul!(∇y[1], ∇!.∂θ, y[1])
-
-    mul!(∇!.ak, ∇!.planFFT.unscaled_forward_transform, y[2])
-    @inbounds @. ∇!.ak = ∇!.ak * ∇!.ikφ * ∇!.planFFT.scale_forward * ∇!.planFFT.scale_inverse
-    mul!(∇y[2], ∇!.planFFT.unscaled_inverse_transform, ∇!.ak)
-    ∇y
+function LinearAlgebra.adjoint(∇!::Pix1dFFTNabla!{Tθ,TW,Tik,Tx}) where {Tθ,TW,Tik,Tx}
+    return Pix1dFFTNabla!{Tθ,TW,Tik,Tx}(
+        ∇!.∂θ',
+        ∇!.planW, 
+        .- ∇!.ikφ,
+        similar(∇!.sk),
+        similar(∇!.sx),
+    )
 end
 
-function (∇!::Nabla!′{Tθ,T1φ,T2φ,T3φ})(∇y::NTuple{2,A}, y::A) where {Tθ,T1φ,T2φ,T3φ,Tf,A<:Array{Tf,2}}
-    ∇!(∇y, (y,y))
+function Pix1dFFTNabla!(∂θ, w::𝕎{Tf}) where Tf
+    wφ = 𝕀(w.sz[1]) ⊗ 𝕎(Tf, w.sz[2:2], w.period[2:2])
+    planW = FFTransforms.plan(wφ)
+    c_forFFTNabla = Tf(planW.scale_forward * planW.scale_inverse)
+
+    ∇! = Pix1dFFTNabla!(
+        ∂θ,
+        planW, 
+        im .* FFTransforms.fullfreq(wφ)[2] .* c_forFFTNabla,
+        Array{eltype_out(wφ)}(undef,size_out(wφ)),
+        Array{eltype_in(wφ)}(undef,size_in(wφ)),
+    )
+
+    return ∇!
+end 
+
+function (∇!::Pix1dFFTNabla!{Tθ,TW,Tik,Tx})(des, y, ::Val{1}) where {Tθ,TW,Tik,Tx}
+    mul!(des, ∇!.∂θ, y)
 end
 
-function (∇!::Nabla!′{Tθ,T1φ,T2φ,T3φ})(y::A) where {Tθ,T1φ,T2φ,T3φ,Tf,A<:Array{Tf,2}}
-    ∇y = (similar(y), similar(y))
-    ∇!(∇y, (y,y))
-    ∇y
+function (∇!::Pix1dFFTNabla!{Tθ,TW,Tik,Tx})(des, y, ::Val{2}) where {Tθ,TW,Tik,Tx}
+    @inbounds ∇!.sx .= y
+    mul!(∇!.sk, ∇!.planW.unscaled_forward_transform, ∇!.sx)
+    @inbounds ∇!.sk .*= ∇!.ikφ
+    mul!(des, ∇!.planW.unscaled_inverse_transform, ∇!.sk)
 end
+
+
 
 #-
-𝕨     = 𝕀(trn.nθ) ⊗ r𝕎(trn.nφ, 2π)
-plan𝕨 = FFTransforms.plan(𝕨)
-kφ    = FFTransforms.freq(𝕨)[2]' |> Array
-ak    = zeros(eltype_out(𝕨), size_out(𝕨))
-∇!′   = Nabla!′(∂θ, plan𝕨, im .* kφ, ak)
+𝕨     = 𝕀(trm.nθ) ⊗ r𝕎(trm.nφ, 2π)
+∇!′   = Pix1dFFTNabla!(∂θ, 𝕨)
 
 #-
-vϕbelt′ = @sblock let ∇!′, trn, ϕ
-    θ = pix(trn)[1]
-    sin⁻²θ = 1 .+ (cot.(θ)).^2 # = cscθ^2
+vϕbelt′ = @sblock let ∇!′, trm, ϕ
+    θ = pix(trm)[1]
+    sin⁻²θ = csc.(θ).^2
 
     ϕbelt = ϕ[:]
     vϕ′ = ∇!′(ϕbelt)

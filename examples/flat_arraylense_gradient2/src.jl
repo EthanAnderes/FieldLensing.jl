@@ -1,7 +1,10 @@
 
+using FFTW
+FFTW.set_num_threads(5)
 
 using FieldLensing
-using Test
+using FieldLensing: ArrayLense, ArrayLenseᴴ, Gradient
+
 using Spectra
 using XFields
 using FFTransforms
@@ -13,35 +16,36 @@ using BenchmarkTools
 using LoopVectorization
 using PyPlot
 using NLopt
+using Test
 
 
-# To use ArrayLense we just need to define ∇!
+# To use ArrayLense we just need to define ∇! which isa Gradient{m}
+# where m is the number of partial derivatives
 # -----------------------------------------------
-struct Nabla!{Tθ,Tφ}
+
+struct Nabla!{Tθ,Tφ} <: FieldLensing.Gradient{2}
     ∂θ::Tθ
     ∂φᵀ::Tφ
 end
 
-function (∇!::Nabla!{Tθ,Tφ})(∇y::NTuple{2,A}, y::NTuple{2,B}) where {Tθ,Tφ,Tf,A<:AbstractMatrix{Tf}, B<:AbstractMatrix{Tf}}
-    mul!(∇y[1], ∇!.∂θ, y[1])
-    mul!(∇y[2], y[2], ∇!.∂φᵀ)
-    ∇y
-end
-function (∇!::Nabla!{Tθ,Tφ})(y::NTuple{2,B}) where {Tθ,Tφ,Tf,B<:AbstractMatrix{Tf}}
-    ∇y = (similar(y[1]), similar(y[2]))
-    ∇!(∇y, (y[1],y[2]))
-    ∇y
+function LinearAlgebra.adjoint(∇!::Nabla!)
+    return Nabla!(
+        ∇!.∂θ',
+        ∇!.∂φᵀ',
+    )
 end
 
+function (∇!::Nabla!{Tθ,Tφ})(des, y, ::Val{1}) where {Tθ,Tφ} 
+    mul!(des, ∇!.∂θ, y)
+end
 
-function (∇!::Nabla!{Tθ,Tφ})(∇y::NTuple{2,A}, y::B) where {Tθ,Tφ,Tf,A<:AbstractMatrix{Tf}, B<:AbstractMatrix{Tf}}
-    ∇!(∇y, (y,y))
-end
-function (∇!::Nabla!{Tθ,Tφ})(y::B) where {Tθ,Tφ,Tf,B<:AbstractMatrix{Tf}}
-    ∇y = (similar(y), similar(y))
-    ∇!(∇y, (y,y))
-    ∇y
-end
+function (∇!::Nabla!{Tθ,Tφ})(des, y, ::Val{2}) where {Tθ,Tφ}
+    mul!(des, y, ∇!.∂φᵀ)
+end 
+
+
+# Other methods 
+# -------------------------------------
 
 
 function whitemap(trm::T) where T<:Transform
@@ -83,29 +87,52 @@ LinearAlgebra.dot(f::Xfield,g::Xfield) = Ωx(fieldtransform(f)) * dot(f[:],g[:])
 # set the transform and the gradient operator 
 # -----------------------------------------------
 trm, ∇! = @sblock let Δθ′ = 2.5, Δφ′ = 2.5, nθ = 512, nφ = 512
-	## 𝕨      = r𝕎32(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
-	𝕨      = r𝕎(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
-	trm    = ordinary_scale(𝕨)*𝕨
+    ## 𝕨      = r𝕎32(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
+    𝕨      = r𝕎(nθ, nθ * deg2rad(Δθ′/60)) ⊗ 𝕎(nφ, nφ * deg2rad(Δφ′/60))
+    trm    = ordinary_scale(𝕨)*𝕨
 
-	onesnθm1 = fill(1,nθ-1)
-	∂θ = spdiagm(-1 => .-onesnθm1, 1 => onesnθm1)
-	∂θ[1,end] = -1
-    ∂θ[end,1] =  1
-    ∂θ = (1 / (2 * Δpix(trm)[1])) * ∂θ
+    θℝ=pix(trm)[1]
+    Δθℝ = θℝ[2] - θℝ[1]
+    ∂θ′ = spdiagm(
+            -2 => fill( 1,length(θℝ)-2),
+            -1 => fill(-8,length(θℝ)-1),
+             1 => fill( 8,length(θℝ)-1),
+             2 => fill(-1,length(θℝ)-2),
+            )
+    ∂θ′[1,end]   =  -8
+    ∂θ′[1,end-1] =  1
+    ∂θ′[2,end]   =  1
 
-    onesnφm1 = fill(1,nφ-1)
-    ∂φ      = spdiagm(-1 => .-onesnφm1, 1 => onesnφm1)
-    ## for the periodic boundary conditions
-    ∂φ[1,end] = -1
-    ∂φ[end,1] =  1
-    ## now as a right operator
-    ## (∂φ * f')' == ∂/∂φ f == f * ∂φᵀ
-    ∂φᵀ = transpose((1 / (2*Δpix(trm)[2])) * ∂φ);
+    ∂θ′[end,1]   =  8
+    ∂θ′[end,2]   = -1
+    ∂θ′[end-1,1] = -1
+
+    ∂θ = (1 / (12Δθℝ)) * ∂θ′
+    ## ∂θ = (∂θ - ∂θ') / 2 # not needed
+
+
+    φℝ=pix(trm)[2]
+    Δφℝ = φℝ[2] - φℝ[1]
+    ∂φ  = spdiagm(
+            -2 => fill( 1,length(φℝ)-2),
+            -1 => fill(-8,length(φℝ)-1),
+             1 => fill( 8,length(φℝ)-1),
+             2 => fill(-1,length(φℝ)-2),
+            )
+    ∂φ[1,end]   =  -8
+    ∂φ[1,end-1] =  1
+    ∂φ[2,end]   =  1
+    ∂φ[end,1]   =  8
+    ∂φ[end,2]   =  -1
+    ∂φ[end-1,1] =  -1
+    ∂φᵀ = transpose((1 / (12Δφℝ)) * ∂φ)
+    ## ∂φᵀ = (∂φᵀ - ∂φᵀ') / 2 # not needed
 
     ∇! = Nabla!(∂θ, ∂φᵀ)
 
     return trm, ∇!
 end
+
 
 
 # ------------------------

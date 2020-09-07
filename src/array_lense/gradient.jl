@@ -85,7 +85,7 @@ end
 # apply on Array arguments without storage
 
 function (∇!::Gradient{d})(y::AbstractArray) where {d}
-    ∇y = map(similar, y)
+    ∇y = tuple((similar(y) for i = Base.OneTo(d))...)
     ∇!(∇y, y)
     ∇y
 end
