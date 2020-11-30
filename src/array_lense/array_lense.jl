@@ -36,10 +36,10 @@ end
 # just to make these as fast as possible for m==2 we can specialize
 # -------------------------------------------------------
 
+
 function ∇ⁱvⁱ!(s::A, v::NTuple{2,A}, ∇!, ∇x::NTuple{2,A}) where {A<:AbstractMatrix}
     ∇!(∇x, v)  
-    ## @avx @. s = ∇x[1] + ∇x[2]
-    @inbounds @. s = ∇x[1] + ∇x[2]
+    @avx @. s = ∇x[1] + ∇x[2]
     return s
 end
 
@@ -51,11 +51,8 @@ end
 
 # version 1
 function ∇ⁱvⁱf!(s::A, v::NTuple{2,A}, f::A, ∇!, ∇x::NTuple{2,A}, ∇y::NTuple{2,A}) where {m,A<:AbstractMatrix}
-   ## @avx @. ∇x[1] = v[1] * f
-   ## @avx @. ∇x[2] = v[2] * f
-   # appears to be a good default
-   @inbounds @. ∇x[1] = v[1] * f
-   @inbounds @. ∇x[2] = v[2] * f
+   @avx @. ∇x[1] = v[1] * f
+   @avx @. ∇x[2] = v[2] * f
    ∇ⁱvⁱ!(s, ∇x, ∇!, ∇y)
 end
 # version 2 (this first distributes the derivative onto the product)
@@ -146,10 +143,14 @@ function setpM!(p1, p2, m11,  m21,  m12,  m22, t, v1, v2, ∂v11, ∂v21, ∂v12
 		m21[i] =   - t * ∂v21[i] 
 		m22[i] = 1 + t * ∂v11[i] 
 		dt     = m11[i] * m22[i] - m12[i] * m21[i]
-		m11[i] /= dt
-		m12[i] /= dt
-		m21[i] /= dt
-		m22[i] /= dt
+		# m11[i] /= dt # hot fix needed for LoopVectorization update
+		# m12[i] /= dt
+		# m21[i] /= dt
+		# m22[i] /= dt
+		m11[i] = m11[i] / dt
+		m12[i] = m12[i] / dt
+		m21[i] = m21[i] / dt
+		m22[i] = m22[i] / dt
 		p1[i]  = m11[i] * v1[i] + m12[i] * v2[i]
  		p2[i]  = m21[i] * v1[i] + m22[i] * v2[i]
 	end
