@@ -120,26 +120,39 @@ function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 
 		# Add to w (use ∇f stored in τLp.∇y)
 		# τf * Mᴴ * ∇f, note the transpose on M
+		
 		# ------------
-		@inbounds @. τLp.∇y[1] *= τf 
-		@inbounds @. τLp.∇y[2] *= τf 
-		@avx @. τLp.w[1] += τLp.mm[1,1] * τLp.∇y[1] + τLp.mm[2,1] * τLp.∇y[2]  
-		@avx @. τLp.w[2] += τLp.mm[1,2] * τLp.∇y[1] + τLp.mm[2,2] * τLp.∇y[2] 
+		## @inbounds @. τLp.∇y[1] *= τf 
+		## @inbounds @. τLp.∇y[2] *= τf 
+		## @avx @. τLp.w[1] += τLp.mm[1,1] * τLp.∇y[1] + τLp.mm[2,1] * τLp.∇y[2]  
+		## @avx @. τLp.w[2] += τLp.mm[1,2] * τLp.∇y[1] + τLp.mm[2,2] * τLp.∇y[2] 
 		## --- alt option
 		## @avx @. τLp.w[1] += τf * (τLp.mm[1,1] * τLp.∇y[1] + τLp.mm[2,1] * τLp.∇y[2])  
 		## @avx @. τLp.w[2] += τf * (τLp.mm[1,2] * τLp.∇y[1] + τLp.mm[2,2] * τLp.∇y[2]) 
+		## --- alt option
+		Base.Threads.@threads for ii ∈ eachindex(τLp.w[1])
+			@inbounds τLp.w[1][ii] += τf[ii] * (τLp.mm[1,1][ii] * τLp.∇y[1][ii] + τLp.mm[2,1][ii] * τLp.∇y[2][ii])  
+			@inbounds τLp.w[2][ii] += τf[ii] * (τLp.mm[1,2][ii] * τLp.∇y[1][ii] + τLp.mm[2,2][ii] * τLp.∇y[2][ii]) 
+		end
 	end
 
-	# update τ̇v ≡ ẏ[1:m]
+	# update ẏ[1:m] ≡ τ̇v
 	# ----------------------
 	# fill τ̇v = - w[q] - t * ∇ⁱpⁱw[q] (make sure τLp.p is pre-computed)
 	# since we don't need τLp.mm at this point lets use it for temp storage
 	∇ⁱvⁱf!(τLp.mm[1,1], τLp.p, τLp.w[1], τLp.∇!, τLp.∇x, τLp.∇y)
 	∇ⁱvⁱf!(τLp.mm[2,1], τLp.p, τLp.w[2], τLp.∇!, τLp.∇x, τLp.∇y)
-	@avx @. ẏ[1] =  - τLp.w[1] - t * τLp.mm[1,1]
-	@avx @. ẏ[2] =  - τLp.w[2] - t * τLp.mm[2,1]
+	
+	## --- 
+	# @avx @. ẏ[1] =  - τLp.w[1] - t * τLp.mm[1,1]
+	# @avx @. ẏ[2] =  - τLp.w[2] - t * τLp.mm[2,1]
+	## --- alt option
+	Base.Threads.@threads for ii ∈ eachindex(ẏ[1])
+		@inbounds ẏ[1][ii] =  - τLp.w[1][ii] - t * τLp.mm[1,1][ii]
+		@inbounds ẏ[2][ii] =  - τLp.w[2][ii] - t * τLp.mm[2,1][ii]
+	end
 
-	# update τ̇v ≡ ẏ[1:m]
+	# alt option for update ẏ[1:m] ≡ τ̇v
 	# ----------------------
 	## for i = 1:2 # m == 2
 	## 	@avx @. τLp.∇x[1] = τLp.p[1] * τLp.w[i]  
