@@ -11,7 +11,37 @@
 # m is the intrinsic dimension of the space
 # d is the Array dimension that forms the storage container for the fields f 
 
-# τArrayLense 
+
+# Highlevel transpose delta flow functions 
+# --------------------------------
+
+"""
+ᴴ∂Ł⁻¹fx_∂vx(v,f,g,...) -> [∂Ł⁻¹fx_∂vx]ᴴ * g, transpose delta flow from time 0 to 1 
+
+Inputs, are (gx::NTuple{n,A}, fx::NTuple{n,A}, vx::NTuple{m,A}, ∇!::Tg, grad_nsteps::Int)
+where fx and gx should be tuples of arrays defined at time 0. 
+"""
+function ᴴ∂Ł⁻¹fx_∂vx(gx::NTuple{n,A}, fx::NTuple{n,A}, vx::NTuple{m,A}, ∇!::Tg, grad_nsteps::Int)::NTuple{m,A} where {m,n,Tf,d,A<:Array{Tf,d},Tg}
+    τŁ₀₁     = τArrayLense(vx, fx, ∇!, 0, 1, grad_nsteps)
+    τvx, τgx = τŁ₀₁(map(zero,vx),  gx)
+    return τvx
+end
+
+"""
+ᴴ∂Łfx_∂vx(v,f,g,...) -> [∂Łfx_∂vx]ᴴ * g, transpose delta flow from time 1 to 0 
+
+Inputs, are (gx::NTuple{n,A}, fx::NTuple{n,A}, vx::NTuple{m,A}, ∇!::Tg, grad_nsteps::Int)
+where fx and gx should be tuples of arrays defined at time 0. 
+"""
+function ᴴ∂Łfx_∂vx(gx::NTuple{n,A}, fx::NTuple{n,A}, vx::NTuple{m,A}, ∇!::Tg, grad_nsteps::Int)::NTuple{m,A} where {m,n,Tf,d,A<:Array{Tf,d},Tg}
+    τŁ₁₀     = τArrayLense(vx, fx, ∇!, 1, 0, grad_nsteps)
+    τvx, τgx = τŁ₁₀(map(zero,vx),  gx)
+    return τvx
+end
+
+
+
+# τArrayLense type which also operates on (τf, τv)
 # --------------------------------
 struct τArrayLense{m,n,Tf,d,Tg<:Gradient{m},Tt<:Real} 
 	v::NTuple{m,Array{Tf,d}}
