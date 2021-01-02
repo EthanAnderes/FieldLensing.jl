@@ -36,12 +36,12 @@
 # end
 
 
-abstract type Gradient{d} end
+abstract type Gradient{m} end
 
 # apply on tuple arguments with pre-storage
 
-function (∇!::Gradient{d})(∇y::NTuple{d}, y::NTuple{d}) where {d}
-    for i=1:d
+function (∇!::Gradient{m})(∇y::NTuple{m}, y::NTuple{m}) where {m}
+    for i=1:m
         ∇!(∇y[i], y[i], Val(i))
     end
     ∇y
@@ -59,8 +59,8 @@ end
 
 # apply on Array arguments with storage
 
-function (∇!::Gradient{d})(∇y::NTuple{d}, y::AbstractArray) where {d}
-    for i=1:d
+function (∇!::Gradient{m})(∇y::NTuple{m}, y::AbstractArray) where {m}
+    for i=1:m
         ∇!(∇y[i], y, Val(i))
     end
 end
@@ -75,7 +75,7 @@ end
 
 # apply on tuple arguments without
 
-function (∇!::Gradient{d})(y::NTuple{d}) where {d}
+function (∇!::Gradient{m})(y::NTuple{m}) where {m}
     ∇y = map(similar, y)
     ∇!(∇y, y)
     ∇y
@@ -84,8 +84,8 @@ end
 
 # apply on Array arguments without storage
 
-function (∇!::Gradient{d})(y::AbstractArray) where {d}
-    ∇y = tuple((similar(y) for i = Base.OneTo(d))...)
+function (∇!::Gradient{m})(y::AbstractArray) where {m}
+    ∇y = tuple((similar(y) for i = Base.OneTo(m))...)
     ∇!(∇y, y)
     ∇y
 end
