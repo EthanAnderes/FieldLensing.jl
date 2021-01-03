@@ -22,19 +22,14 @@ function odesolve_RK4(f!, y₀::NTuple{m}, t₀, t₁, nsteps) where {m}
     y, y′  = deepcopy(y₀), map(similar,y₀)
     v₁, v₂ = map(similar,y₀), map(similar,y₀)
     v₃, v₄ = map(similar,y₀), map(similar,y₀)
-    for t in range(t₀,t₁,length=nsteps+1)[1:end-1]
-        f!(v₁, t, y)
-
-        for i=1:m; (@avx @. y′[i] = y[i] + h½*v₁[i]); end
-        f!(v₂, t + h½, y′)
-
-        for i=1:m; (@avx @. y′[i] = y[i] + h½*v₂[i]); end
-        f!(v₃, t + h½, y′)
-
-        for i=1:m; (@avx @. y′[i] = y[i] + h*v₃[i]); end
-        f!(v₄, t + h, y′)
-        
-        for i=1:m; (@avx @. y[i] += h*(v₁[i] + 2v₂[i] + 2v₃[i] + v₄[i])/6); end
+    for t in range(t₀,t₁,length=nsteps+1)[1:end-1]        
+        for i=1:m
+            f!(v₁[i], t, y[i])
+            f!(v₂[i], t + h½, (@inbounds @. y′[i] = y[i] + h½*v₁[i]))
+            f!(v₃[i], t + h½, (@inbounds @. y′[i] = y[i] + h½*v₂[i]))
+            f!(v₄[i], t + h,  (@inbounds @. y′[i] = y[i] + h*v₃[i]))
+            @inbounds @. y[i] += h*(v₁[i] + 2v₂[i] + 2v₃[i] + v₄[i])/6
+        end
     end
     return y
 end
