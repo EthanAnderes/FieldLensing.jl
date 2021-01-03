@@ -109,13 +109,21 @@ end
 # --------------------------------------
 
 # (m==1). Note: overwrites ẏ
-function (Lp::ArrayLensePlan{1,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}
+function (Lp::ArrayLensePlan{1,Tf,d})(ẏ::A, t::Real, y::A) where {Tf,d,A<:Array{Tf,d}}
 	setpM!(Lp.p[1], Lp.mm[1,1], t, Lp.v[1], Lp.∂v[1,1])
 	vⁱ∇ⁱf!(ẏ, Lp.p, y, Lp.∇!, Lp.∇y) # ẏ = pⁱ∇ⁱy
 end
 
+# for the case when lensing multiple fields
+function (Lp::ArrayLensePlan{1,Tf,d})(ẏ::NTuple{n,A}, t::Real, y::NTuple{n,A}) where {n,Tf,d,A<:Array{Tf,d}}
+	setpM!(Lp.p[1], Lp.mm[1,1], t, Lp.v[1], Lp.∂v[1,1])
+	for i=1:n
+		vⁱ∇ⁱf!(ẏ[i], Lp.p, y[i], Lp.∇!, Lp.∇y) # ẏ = pⁱ∇ⁱy
+	end
+end
+
 # (m==2). Note: overwrites ẏ
-function (Lp::ArrayLensePlan{2,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}		
+function (Lp::ArrayLensePlan{2,Tf,d})(ẏ::A, t::Real, y::A) where {Tf,d,A<:Array{Tf,d}}	
 	setpM!(
 		Lp.p[1], Lp.p[2], 
 		Lp.mm[1,1],  Lp.mm[2,1],  Lp.mm[1,2],  Lp.mm[2,2], 
@@ -125,6 +133,21 @@ function (Lp::ArrayLensePlan{2,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d})
 	)
 	vⁱ∇ⁱf!(ẏ, Lp.p, y, Lp.∇!, Lp.∇y) # ẏ = pⁱ∇ⁱy
 end
+
+# for the case when lensing multiple fields
+function (Lp::ArrayLensePlan{2,Tf,d})(ẏ::NTuple{n,A}, t::Real, y::NTuple{n,A})  where {n,Tf,d,A<:Array{Tf,d}}	
+	setpM!(
+		Lp.p[1], Lp.p[2], 
+		Lp.mm[1,1],  Lp.mm[2,1],  Lp.mm[1,2],  Lp.mm[2,2], 
+		t, 
+		Lp.v[1], Lp.v[2], 
+		Lp.∂v[1,1], Lp.∂v[2,1], Lp.∂v[1,2], Lp.∂v[2,2]
+	)
+	for i=1:n
+		vⁱ∇ⁱf!(ẏ[i], Lp.p, y[i], Lp.∇!, Lp.∇y) # ẏ = pⁱ∇ⁱy
+	end
+end
+
 
 # Methods that fill M and p from (v,∂v,t) 
 # --------------------------------------

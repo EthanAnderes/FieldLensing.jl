@@ -63,13 +63,22 @@ end
 # --------------------------------------
 
 # (m==1). Note: overwrites ẏ
-function (Lp::ArrayLenseᴴPlan{1,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}
+function (Lp::ArrayLenseᴴPlan{1,Tf,d})(ẏ::A, t::Real, y::A) where {Tf,d,A<:Array{Tf,d}}
 	setpM!(Lp.p[1], Lp.mm[1,1], t, Lp.v[1], Lp.∂v[1,1])
 	∇ⁱvⁱf!(ẏ, Lp.p, y, Lp.∇!, Lp.∇x, Lp.∇y) # ∇ⁱpⁱy
 end
 
+# for the case when lensing multiple fields
+function (Lp::ArrayLenseᴴPlan{1,Tf,d})(ẏ::NTuple{n,A}, t::Real, y::NTuple{n,A}) where {n,Tf,d,A<:Array{Tf,d}}
+	setpM!(Lp.p[1], Lp.mm[1,1], t, Lp.v[1], Lp.∂v[1,1])
+	for i=1:n
+		∇ⁱvⁱf!(ẏ[i], Lp.p, y[i], Lp.∇!, Lp.∇x, Lp.∇y) # ∇ⁱpⁱy
+	end
+end
+
+
 # (m==2). Note: overwrites ẏ
-function (Lp::ArrayLenseᴴPlan{2,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}
+function (Lp::ArrayLenseᴴPlan{2,Tf,d})(ẏ::A, t::Real, y::A) where {Tf,d,A<:Array{Tf,d}}
 	setpM!(
 		Lp.p[1], Lp.p[2], 
 		Lp.mm[1,1],  Lp.mm[2,1],  Lp.mm[1,2],  Lp.mm[2,2], 
@@ -80,6 +89,19 @@ function (Lp::ArrayLenseᴴPlan{2,Tf,d})(ẏ::Array{Tf,d}, t::Real, y::Array{Tf,
 	∇ⁱvⁱf!(ẏ, Lp.p, y, Lp.∇!, Lp.∇x, Lp.∇y) # ∇ⁱpⁱy
 end
 
+# for the case when lensing multiple fields
+function (Lp::ArrayLenseᴴPlan{2,Tf,d})(ẏ::NTuple{n,A}, t::Real, y::NTuple{n,A}) where {n,Tf,d,A<:Array{Tf,d}}
+	setpM!(
+		Lp.p[1], Lp.p[2], 
+		Lp.mm[1,1],  Lp.mm[2,1],  Lp.mm[1,2],  Lp.mm[2,2], 
+		t, 
+		Lp.v[1], Lp.v[2],
+		Lp.∂v[1,1], Lp.∂v[2,1], Lp.∂v[1,2], Lp.∂v[2,2]
+	)
+	for i=1:n
+		∇ⁱvⁱf!(ẏ[i], Lp.p, y[i], Lp.∇!, Lp.∇x, Lp.∇y) # ∇ⁱpⁱy
+	end
+end
 
 
 

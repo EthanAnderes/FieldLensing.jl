@@ -20,7 +20,14 @@ plan(L::AbstractFlow) = L
 # flow(L, f) where f isa Array or a tuple of arrays
 # -----------------------------
 
-# TODO: you need to update array_lense and adjoint_array_lense to work on tuples
+# Note: flow(L,f::NTuple) requires Lp! = plan(L) eat NTuples as arguments.
+# if you want broadcasting behavior then you need to impliment it in Lp!,
+# not by broadcasting flow to the elements of the tuple. 
+# 
+# That said, you may need to add another method for flow(L,f::Field), which calls 
+# flow(L,f::NTuple), that can put together the tuple output of flow(L,f::NTuple) 
+# back into field form
+
 
 # Behavior on Arrays or tuples of Arrays
 function flow(L::AbstractFlow{Trn,Tf,Ti,d}, f::Union{A, NTuple{n,A}}) where {Tf, Ti, d, n, A<:Array{Tf,d}, Trn<:Transform{Tf,d}}
@@ -35,6 +42,10 @@ end
 
 # flow(L, f) where f isa field or a tuple of fields
 # -----------------------------
+
+# These flow(L,f::Field) method, just call out to 
+# flow(L,f::NTuple), but then re-assemble the tuple output of flow(L,f::NTuple) 
+# back into field form
 
 # flow(L,f) where f is a Map Field
 function flow(L::AbstractFlow, f::MF) where {MF<:MapField} 
