@@ -3,7 +3,7 @@
 # d is the dimension of the Xfield storage 
 # m is the intrinsic dimension of the field (i.e ndims(∇))
 
-struct Xlense{m,Trn<:Transform,Tf,Ti,d}  <: AbstractFlow{Trn,Tf,Ti,d}
+struct Xlense{m,Trn<:Transform,Tf,Ti,d}  <: AbstractFlow
 	trn::Trn
 	v::NTuple{m,Xmap{Trn,Tf,Ti,d}}
 	t₀::Int # make this Float64 ?

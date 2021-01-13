@@ -1,7 +1,7 @@
 # AdjointXlense and AdjointXlensePlan
 # ===============================================
 
-struct AdjointXlense{m,Trn<:Transform,Tf,Ti,d}  <: AbstractFlow{Trn,Tf,Ti,d}
+struct AdjointXlense{m,Trn<:Transform,Tf,Ti,d}  <: AbstractFlow
 	trn::Trn
 	v::NTuple{m,Xmap{Trn,Tf,Ti,d}}
 	t₀::Int 

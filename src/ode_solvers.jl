@@ -8,14 +8,10 @@ function odesolve_RK4(f!, y₀::AbstractArray, t₀, t₁, nsteps)
     v₃, v₄ = similar(y₀), similar(y₀)
     for t in range(t₀,t₁,length=nsteps+1)[1:end-1]
         f!(v₁, t, y)
-        # f!(v₂, t + h½, (@avx @. y′ = y + h½*v₁))
-        # f!(v₃, t + h½, (@avx @. y′ = y + h½*v₂))
-        # f!(v₄, t + h,  (@avx @. y′ = y + h*v₃))
-        # @avx @. y += h*(v₁ + 2v₂ + 2v₃ + v₄)/6
-        f!(v₂, t + h½, (@inbounds @. y′ = y + h½*v₁))
-        f!(v₃, t + h½, (@inbounds @. y′ = y + h½*v₂))
-        f!(v₄, t + h,  (@inbounds @. y′ = y + h*v₃))
-        @inbounds @. y += h*(v₁ + 2v₂ + 2v₃ + v₄)/6
+        f!(v₂, t + h½, (@avx @. y′ = y + h½*v₁))
+        f!(v₃, t + h½, (@avx @. y′ = y + h½*v₂))
+        f!(v₄, t + h,  (@avx @. y′ = y + h*v₃))
+        @avx @. y += h*(v₁ + 2v₂ + 2v₃ + v₄)/6
     end
     return y
 end
@@ -29,27 +25,16 @@ function odesolve_RK4(f!, y₀::NTuple{m}, t₀, t₁, nsteps) where {m}
     for t in range(t₀,t₁,length=nsteps+1)[1:end-1]
         f!(v₁, t, y)
 
-        # for i=1:m; (@avx @. y′[i] = y[i] + h½*v₁[i]); end
-        # f!(v₂, t + h½, y′)
-
-        # for i=1:m; (@avx @. y′[i] = y[i] + h½*v₂[i]); end
-        # f!(v₃, t + h½, y′)
-
-        # for i=1:m; (@avx @. y′[i] = y[i] + h*v₃[i]); end
-        # f!(v₄, t + h, y′)
-        
-        # for i=1:m; (@avx @. y[i] += h*(v₁[i] + 2v₂[i] + 2v₃[i] + v₄[i])/6); end
-
-        for i=1:m; (@inbounds @. y′[i] = y[i] + h½*v₁[i]); end
+        for i=1:m; (@avx @. y′[i] = y[i] + h½*v₁[i]); end
         f!(v₂, t + h½, y′)
 
-        for i=1:m; (@inbounds @. y′[i] = y[i] + h½*v₂[i]); end
+        for i=1:m; (@avx @. y′[i] = y[i] + h½*v₂[i]); end
         f!(v₃, t + h½, y′)
 
-        for i=1:m; (@inbounds @. y′[i] = y[i] + h*v₃[i]); end
+        for i=1:m; (@avx @. y′[i] = y[i] + h*v₃[i]); end
         f!(v₄, t + h, y′)
         
-        for i=1:m; (@inbounds @. y[i] += h*(v₁[i] + 2v₂[i] + 2v₃[i] + v₄[i])/6); end
+        for i=1:m; (@avx @. y[i] += h*(v₁[i] + 2v₂[i] + 2v₃[i] + v₄[i])/6); end
 
     end
     return y

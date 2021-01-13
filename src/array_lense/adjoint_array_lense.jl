@@ -10,7 +10,7 @@
 
 # ArrayLenseᴴ
 # --------------------------------
-struct ArrayLenseᴴ{m,Tf,d,Tg<:Gradient{m},Tt<:Real}  <: AbstractFlow{XFields.Id{Tf,d},Tf,Tf,d}
+struct ArrayLenseᴴ{m,Tf,d,Tg<:Gradient{m},Tt<:Real}  <: AbstractFlow
 	v::NTuple{m,Array{Tf,d}}
 	∇!::Tg  
 	t₀::Tt
