@@ -59,12 +59,12 @@ function flow_reconstruct(L::AbstractFlow, ff::MF, ln_ffd::AbstractArray) where 
 	MF(fieldtransform(ff), ln_ffd)
 end
 
-function flow_reconstruct(L::AbstractFlow, ff::MF, ln_ffd::NTuple{1,A}) where {MF<:Field, A<:AbstractArray}
+function flow_reconstruct(L::AbstractFlow, ff::MF, ln_ffd::NTuple{1,<:AbstractArray}) where {MF<:Field}
 	MF(fieldtransform(ff), ln_ffd[1])
 end
 
-function flow_reconstruct(L::AbstractFlow, ff::MF, ln_ffd::NTuple{n,A}) where {MF<:Field, n, d, T, A<:AbstractArray{T, d}}
-	MF(fieldtransform(ff), cat(ln_ffd...;dims = d+1))
+function flow_reconstruct(L::AbstractFlow, ff::MF, ln_ffd::NTuple{n,<:AbstractArray}) where {n, MF<:Field}
+	MF(fieldtransform(ff), cat(ln_ffd...;dims = ndims(ln_ffd[1])+1))
 end
 
 
