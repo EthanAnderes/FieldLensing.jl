@@ -146,7 +146,7 @@ function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 		vⁱ∇ⁱf!(ḟ , τLp.p, f, τLp.∇!, τLp.∇y) # need τLp.∇y here .. not τLp.∇x
 		# ---- alt 
 		## τLp.∇!(τLp.∇y, f)  
-		## @avx @. ḟ =  τLp.p[1] * τLp.∇y[1] + τLp.p[2] * τLp.∇y[2] 
+		## @turbo @. ḟ =  τLp.p[1] * τLp.∇y[1] + τLp.p[2] * τLp.∇y[2] 
 
 		# Add to w (use ∇f stored in τLp.∇y)
 		# τf * Mᴴ * ∇f, note the transpose on M
@@ -154,11 +154,11 @@ function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 		# ------------
 		## @inbounds @. τLp.∇y[1] *= τf 
 		## @inbounds @. τLp.∇y[2] *= τf 
-		## @avx @. τLp.w[1] += τLp.mm[1,1] * τLp.∇y[1] + τLp.mm[2,1] * τLp.∇y[2]  
-		## @avx @. τLp.w[2] += τLp.mm[1,2] * τLp.∇y[1] + τLp.mm[2,2] * τLp.∇y[2] 
+		## @turbo @. τLp.w[1] += τLp.mm[1,1] * τLp.∇y[1] + τLp.mm[2,1] * τLp.∇y[2]  
+		## @turbo @. τLp.w[2] += τLp.mm[1,2] * τLp.∇y[1] + τLp.mm[2,2] * τLp.∇y[2] 
 		## --- alt option
-		## @avx @. τLp.w[1] += τf * (τLp.mm[1,1] * τLp.∇y[1] + τLp.mm[2,1] * τLp.∇y[2])  
-		## @avx @. τLp.w[2] += τf * (τLp.mm[1,2] * τLp.∇y[1] + τLp.mm[2,2] * τLp.∇y[2]) 
+		## @turbo @. τLp.w[1] += τf * (τLp.mm[1,1] * τLp.∇y[1] + τLp.mm[2,1] * τLp.∇y[2])  
+		## @turbo @. τLp.w[2] += τf * (τLp.mm[1,2] * τLp.∇y[1] + τLp.mm[2,2] * τLp.∇y[2]) 
 		## --- alt option
 		Base.Threads.@threads for ii ∈ eachindex(τLp.w[1])
 			@inbounds τLp.w[1][ii] += τf[ii] * (τLp.mm[1,1][ii] * τLp.∇y[1][ii] + τLp.mm[2,1][ii] * τLp.∇y[2][ii])  
@@ -174,8 +174,8 @@ function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 	∇ⁱvⁱf!(τLp.mm[2,1], τLp.p, τLp.w[2], τLp.∇!, τLp.∇x, τLp.∇y)
 	
 	## --- 
-	# @avx @. ẏ[1] =  - τLp.w[1] - t * τLp.mm[1,1]
-	# @avx @. ẏ[2] =  - τLp.w[2] - t * τLp.mm[2,1]
+	# @turbo @. ẏ[1] =  - τLp.w[1] - t * τLp.mm[1,1]
+	# @turbo @. ẏ[2] =  - τLp.w[2] - t * τLp.mm[2,1]
 	## --- alt option
 	Base.Threads.@threads for ii ∈ eachindex(ẏ[1])
 		@inbounds ẏ[1][ii] =  - τLp.w[1][ii] - t * τLp.mm[1,1][ii]
@@ -185,10 +185,10 @@ function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 	# alt option for update ẏ[1:m] ≡ τ̇v
 	# ----------------------
 	## for i = 1:2 # m == 2
-	## 	@avx @. τLp.∇x[1] = τLp.p[1] * τLp.w[i]  
-	## 	@avx @. τLp.∇x[2] = τLp.p[2] * τLp.w[i]  
+	## 	@turbo @. τLp.∇x[1] = τLp.p[1] * τLp.w[i]  
+	## 	@turbo @. τLp.∇x[2] = τLp.p[2] * τLp.w[i]  
 	## 	τLp.∇!(τLp.∇y, τLp.∇x)  
-	## 	@avx @. ẏ[i] = - τLp.w[i] - t * (τLp.∇y[1] + τLp.∇y[2])
+	## 	@turbo @. ẏ[i] = - τLp.w[i] - t * (τLp.∇y[1] + τLp.∇y[2])
 	## end
 
 end
