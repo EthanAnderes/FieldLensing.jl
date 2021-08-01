@@ -157,13 +157,14 @@ function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 		## @turbo @. τLp.w[1] += τLp.mm[1,1] * τLp.∇y[1] + τLp.mm[2,1] * τLp.∇y[2]  
 		## @turbo @. τLp.w[2] += τLp.mm[1,2] * τLp.∇y[1] + τLp.mm[2,2] * τLp.∇y[2] 
 		## --- alt option
-		## @turbo @. τLp.w[1] += τf * (τLp.mm[1,1] * τLp.∇y[1] + τLp.mm[2,1] * τLp.∇y[2])  
-		## @turbo @. τLp.w[2] += τf * (τLp.mm[1,2] * τLp.∇y[1] + τLp.mm[2,2] * τLp.∇y[2]) 
+		@tturbo @. τLp.w[1] += τf * (τLp.mm[1,1] * τLp.∇y[1] + τLp.mm[2,1] * τLp.∇y[2])  
+		@tturbo @. τLp.w[2] += τf * (τLp.mm[1,2] * τLp.∇y[1] + τLp.mm[2,2] * τLp.∇y[2]) 
 		## --- alt option
-		Base.Threads.@threads for ii ∈ eachindex(τLp.w[1])
-			@inbounds τLp.w[1][ii] += τf[ii] * (τLp.mm[1,1][ii] * τLp.∇y[1][ii] + τLp.mm[2,1][ii] * τLp.∇y[2][ii])  
-			@inbounds τLp.w[2][ii] += τf[ii] * (τLp.mm[1,2][ii] * τLp.∇y[1][ii] + τLp.mm[2,2][ii] * τLp.∇y[2][ii]) 
-		end
+		# Base.Threads.@threads for ii ∈ eachindex(τLp.w[1])
+		# 	@inbounds τLp.w[1][ii] += τf[ii] * (τLp.mm[1,1][ii] * τLp.∇y[1][ii] + τLp.mm[2,1][ii] * τLp.∇y[2][ii])  
+		# 	@inbounds τLp.w[2][ii] += τf[ii] * (τLp.mm[1,2][ii] * τLp.∇y[1][ii] + τLp.mm[2,2][ii] * τLp.∇y[2][ii]) 
+		# end
+
 	end
 
 	# update ẏ[1:m] ≡ τ̇v
@@ -174,13 +175,13 @@ function (τLp::τArrayLensePlan{2,n,Tf,d})(ẏ, t, y) where {n,Tf,d}
 	∇ⁱvⁱf!(τLp.mm[2,1], τLp.p, τLp.w[2], τLp.∇!, τLp.∇x, τLp.∇y)
 	
 	## --- 
-	# @turbo @. ẏ[1] =  - τLp.w[1] - t * τLp.mm[1,1]
-	# @turbo @. ẏ[2] =  - τLp.w[2] - t * τLp.mm[2,1]
+	@tturbo @. ẏ[1] =  - τLp.w[1] - t * τLp.mm[1,1]
+	@tturbo @. ẏ[2] =  - τLp.w[2] - t * τLp.mm[2,1]
 	## --- alt option
-	Base.Threads.@threads for ii ∈ eachindex(ẏ[1])
-		@inbounds ẏ[1][ii] =  - τLp.w[1][ii] - t * τLp.mm[1,1][ii]
-		@inbounds ẏ[2][ii] =  - τLp.w[2][ii] - t * τLp.mm[2,1][ii]
-	end
+	# Base.Threads.@threads for ii ∈ eachindex(ẏ[1])
+	# 	@inbounds ẏ[1][ii] =  - τLp.w[1][ii] - t * τLp.mm[1,1][ii]
+	# 	@inbounds ẏ[2][ii] =  - τLp.w[2][ii] - t * τLp.mm[2,1][ii]
+	# end
 
 	# alt option for update ẏ[1:m] ≡ τ̇v
 	# ----------------------
