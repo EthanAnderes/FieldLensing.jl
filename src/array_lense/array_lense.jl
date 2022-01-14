@@ -161,22 +161,16 @@ end
 # m == 2
 function setpM!(p1, p2, m11,  m21,  m12,  m22, t, v1, v2, ∂v11, ∂v21, ∂v12, ∂v22)
 	# @tturbo for i ∈ eachindex(m11)
-	# @turbo for i ∈ eachindex(m11)
-	# Base.Threads.@threads for i ∈ eachindex(m11)
-	for i ∈ eachindex(m11)
+	Base.Threads.@threads for i ∈ eachindex(m11)
 		m11[i] = 1 + t * ∂v22[i] 
 		m12[i] =   - t * ∂v12[i] 
 		m21[i] =   - t * ∂v21[i] 
 		m22[i] = 1 + t * ∂v11[i] 
 		dt     = m11[i] * m22[i] - m12[i] * m21[i]
-		# m11[i] /= dt # hot fix needed for LoopVectorization update
-		# m12[i] /= dt
-		# m21[i] /= dt
-		# m22[i] /= dt
-		m11[i] = m11[i] / dt
-		m12[i] = m12[i] / dt
-		m21[i] = m21[i] / dt
-		m22[i] = m22[i] / dt
+		m11[i] /= dt 
+		m12[i] /= dt
+		m21[i] /= dt
+		m22[i] /= dt
 		p1[i]  = m11[i] * v1[i] + m12[i] * v2[i]
  		p2[i]  = m21[i] * v1[i] + m22[i] * v2[i]
 	end
