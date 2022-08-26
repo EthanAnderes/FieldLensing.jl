@@ -9,19 +9,19 @@ struct AdjointXlense{m,Trn<:Transform,Tf,Ti,d}  <: AbstractFlow
 	nsteps::Int	
 end
 
-function AdjointXlense(trn::Trn, v::NTuple{m,Xmap{Trn,Tf,Ti,d}}, t₀, t₁, nsteps) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+function AdjointXlense(trn::Trn, v::NTuple{m,Xmap{Trn,Tf,Ti,d}}, t₀, t₁, nsteps) where {m,Tf,Ti,d,Trn<:Transform}
 	AdjointXlense{m,Trn,Tf,Ti,d}(trn, v, t₀, t₁, nsteps)
 end
 
-function Base.inv(L::AdjointXlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+function Base.inv(L::AdjointXlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform}
 	AdjointXlense{m,Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
 end
 
-function LinearAlgebra.adjoint(L::Xlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+function LinearAlgebra.adjoint(L::Xlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform}
 	AdjointXlense{m,Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
 end
 
-function LinearAlgebra.adjoint(L::AdjointXlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+function LinearAlgebra.adjoint(L::AdjointXlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform}
 	Xlense{m,Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
 end
 
@@ -38,7 +38,7 @@ struct AdjointXlensePlan{m,Trn<:Transform,Tf,Ti,d}
 end
 
 # Vector field method (m==1). Note: overwrites v
-function (Lp::AdjointXlensePlan{1,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {d,Tf,Trn<:Transform{Tf,d}}
+function (Lp::AdjointXlensePlan{1,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {d,Tf,Trn<:Transform}
 	@avx @. Lp.mx[1,1]  = 1 / (1 + t * Lp.∂vx[1,1])
 	@avx @. Lp.px[1]    = Lp.mx[1,1] * Lp.vx[1] * y
 	gradient!(Lp.∇y, (Lp.px[1],), Lp) 
@@ -46,7 +46,7 @@ function (Lp::AdjointXlensePlan{1,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d})
 end
 
 # Vector field method (d==2). Note: overwrites v
-function (Lp::AdjointXlensePlan{2,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {d,Tf,Trn<:Transform{Tf,d}}
+function (Lp::AdjointXlensePlan{2,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {d,Tf,Trn<:Transform}
 	m11,  m12,  m21,  m22  = Lp.mx[1,1],  Lp.mx[1,2],  Lp.mx[2,1],  Lp.mx[2,2]
 	∂v11, ∂v12, ∂v21, ∂v22 = Lp.∂vx[1,1], Lp.∂vx[1,2], Lp.∂vx[2,1], Lp.∂vx[2,2]
 	p1y, p2y, v1, v2         = Lp.px[1], Lp.px[2], Lp.vx[1], Lp.vx[2]

@@ -11,11 +11,11 @@ struct Xlense{m,Trn<:Transform,Tf,Ti,d}  <: AbstractFlow
 	nsteps::Int
 end
 
-function Xlense(trn::Trn, v::NTuple{m,Xmap{Trn,Tf,Ti,d}}, t₀, t₁, nsteps) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+function Xlense(trn::Trn, v::NTuple{m,Xmap{Trn,Tf,Ti,d}}, t₀, t₁, nsteps) where {m,Tf,Ti,d,Trn<:Transform}
 	Xlense{m,Trn,Tf,Ti,d}(trn, v, t₀, t₁, nsteps)
 end
 
-function Base.inv(L::Xlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform{Tf,d}}
+function Base.inv(L::Xlense{m,Trn,Tf,Ti,d}) where {m,Tf,Ti,d,Trn<:Transform}
 	Xlense{m,Trn,Tf,Ti,d}(L.trn, L.v, L.t₁, L.t₀, L.nsteps)
 end
 
@@ -32,7 +32,7 @@ struct XlensePlan{m,Trn<:Transform,Tf,Ti,d}
 end
 
 # Vector field method (m==1). Note: overwrites v
-function (Lp::XlensePlan{1,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}
+function (Lp::XlensePlan{1,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform}
 	@avx @. Lp.mx[1,1]  = 1 / (1 + t * Lp.∂vx[1,1])
 	@avx @. Lp.px[1]    = Lp.mx[1,1] * Lp.vx[1]
 	gradient!(Lp.∇y, y, Lp) 
@@ -40,7 +40,7 @@ function (Lp::XlensePlan{1,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where 
 end
 
 # Vector field method (m==2). Note: overwrites v
-function (Lp::XlensePlan{2,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform{Tf,d}}		
+function (Lp::XlensePlan{2,Trn})(v::Array{Tf,d}, t::Real, y::Array{Tf,d}) where {Tf,d,Trn<:Transform}		
 	m11,  m12,  m21,  m22  = Lp.mx[1,1],  Lp.mx[1,2],  Lp.mx[2,1],  Lp.mx[2,2]
 	∂v11, ∂v12, ∂v21, ∂v22 = Lp.∂vx[1,1], Lp.∂vx[1,2], Lp.∂vx[2,1], Lp.∂vx[2,2]
 	p1, p2, v1, v2         = Lp.px[1], Lp.px[2], Lp.vx[1], Lp.vx[2]
