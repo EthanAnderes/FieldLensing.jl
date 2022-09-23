@@ -50,13 +50,13 @@ function vⁱ∇ⁱf!(s::A, v::NTuple{2,A}, f::A, ∇!, ∇x::NTuple{2,A}) where
 end
 
 # version 1
-function ∇ⁱvⁱf!(s::A, v::NTuple{2,A}, f::A, ∇!, ∇x::NTuple{2,A}, ∇y::NTuple{2,A}) where {m,A<:AbstractMatrix}
+function ∇ⁱvⁱf!(s::A, v::NTuple{2,A}, f::A, ∇!, ∇x::NTuple{2,A}, ∇y::NTuple{2,A}) where {A<:AbstractMatrix}
    @inbounds @. ∇x[1] = v[1] * f
    @inbounds @. ∇x[2] = v[2] * f
    ∇ⁱvⁱ!(s, ∇x, ∇!, ∇y)
 end
 # version 2 (this first distributes the derivative onto the product)
-## function ∇ⁱvⁱf!(s::A, v::NTuple{2,A}, f::A, ∇!, ∇x::NTuple{2,A}, ∇y::NTuple{2,A}) where {m,A<:AbstractMatrix}
+## function ∇ⁱvⁱf!(s::A, v::NTuple{2,A}, f::A, ∇!, ∇x::NTuple{2,A}, ∇y::NTuple{2,A}) where {A<:AbstractMatrix}
 ##     ∇!(∇x, v)
 ##     ∇!(∇y, f)
 ##     @turbo @. s = (∇x[1] + ∇x[2]) * f + v[1] * ∇y[1] + v[2] * ∇y[2]
